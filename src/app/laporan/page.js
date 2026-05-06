@@ -95,7 +95,13 @@ export default function Laporan() {
     const todayStr = new Date().toISOString().split('T')[0]
     const { data, error } = await supabase
       .from('transactions')
-      .select('*')
+      .select(`
+        id, created_at, total_harga, diskon,
+        transaction_items (
+          quantity, subtotal,
+          products ( name )
+        )
+      `)
       .gte('created_at', todayStr)
       .order('created_at', { ascending: false })
 
@@ -162,13 +168,16 @@ export default function Laporan() {
     try {
       const { data: existing } = await supabase
         .from('daily_summary')
-        .select('carry_over, total_modal, jumlah_transaksi')
+        .select('carry_over, total_modal, jumlah_transaksi, total_diskon')
         .eq('date', today)
         .maybeSingle()
 
       const carryPenjualan = existing?.carry_over ?? 0
+      const carryDiskon = existing?.total_diskon ?? 0
 
       let modalSesi = 0
+      let diskonSesi = transactions.reduce((acc, trx) => acc + (trx.diskon || 0), 0)
+
       if (transactions.length > 0) {
         const { data: items, error: itemErr } = await supabase
           .from('transaction_items')
@@ -182,6 +191,7 @@ export default function Laporan() {
 
       const totalPenjualan = carryPenjualan + totalHariIni
       const totalModal = (existing?.total_modal ?? 0) + modalSesi
+      const totalDiskon = carryDiskon + diskonSesi
       const keuntunganBersih = totalPenjualan - totalModal
 
       const { error } = await supabase
@@ -300,10 +310,10 @@ export default function Laporan() {
       showToast('Belum ada data riwayat untuk diekspor.', 'error')
       return
     }
-    const headers = ['Tanggal', 'Total Penjualan', 'Total Modal', 'Keuntungan Bersih', 'Jumlah Transaksi']
+    const headers = ['Tanggal', 'Total Penjualan', 'Total Diskon', 'Total Modal', 'Keuntungan Bersih', 'Jumlah Transaksi']
     const rows = history.map(item => [
-      item.date, item.total_penjualan, item.total_modal ?? 0,
-      item.keuntungan_bersih ?? 0, item.jumlah_transaksi
+      item.date, item.total_penjualan, item.total_diskon ?? 0,
+      item.total_modal ?? 0, item.keuntungan_bersih ?? 0, item.jumlah_transaksi
     ])
     const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
@@ -321,7 +331,7 @@ export default function Laporan() {
       // 1. Ambil semua transaksi pada tanggal tersebut
       const { data: trxList, error: trxErr } = await supabase
         .from('transactions')
-        .select('id, created_at, total_harga')
+        .select('id, created_at, total_harga, diskon')
         .gte('created_at', dateStr)
         .lt('created_at', new Date(new Date(dateStr).getTime() + 86400000).toISOString().split('T')[0])
         .order('created_at', { ascending: true })
@@ -357,6 +367,7 @@ export default function Laporan() {
         'Harga Jual',
         'Qty',
         'Subtotal Jual',
+        'Diskon Trx',
         'Subtotal Modal',
         'Keuntungan Item'
       ]
@@ -368,14 +379,17 @@ export default function Laporan() {
         })
         const subModal = item.products.harga_modal * item.quantity
         const keuntunganItem = item.subtotal - subModal
+        const diskonTrx = trxList.find(t => t.id === item.transaction_id)?.diskon || 0
+
         return [
           waktu,
           item.transaction_id.slice(0, 8),
-          `"${item.products.name}"`, // quote agar koma dalam nama tidak rusak CSV
+          `"${item.products.name}"`,
           item.products.harga_modal,
           item.products.harga_jual,
           item.quantity,
           item.subtotal,
+          diskonTrx,
           subModal,
           keuntunganItem
         ]
@@ -464,8 +478,16 @@ export default function Laporan() {
 
           {/* TRANSACTION LIST */}
           <section className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden mb-8">
-            <div className="p-6 border-b border-gray-50 bg-gray-50/50">
+            <div className="p-6 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
               <h3 className="font-bold text-gray-700">Detail Transaksi Hari Ini</h3>
+              {transactions.length > 0 && (
+                <button
+                  onClick={() => exportDailyDetailCSV(new Date().toISOString().split('T')[0])}
+                  className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded-xl hover:bg-green-600 transition-all shadow-md shadow-green-100 flex items-center gap-2"
+                >
+                  ⬇ Export Detail Hari Ini
+                </button>
+              )}
             </div>
             <div className="overflow-x-auto">
               {loading ? (
@@ -483,18 +505,34 @@ export default function Laporan() {
                   <thead>
                     <tr className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50">
                       <th className="px-6 py-4">Waktu</th>
-                      <th className="px-6 py-4">ID Transaksi</th>
-                      <th className="px-6 py-4 text-right">Total Harga</th>
+                      <th className="px-6 py-4">Produk yang Dibeli</th>
+                      <th className="px-6 py-4 text-right">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {transactions.map((trx) => (
-                      <tr key={trx.id} className="hover:bg-gray-50 transition-colors group">
-                        <td className="px-6 py-4 text-sm text-gray-500">{formatTime(trx.created_at)}</td>
-                        <td className="px-6 py-4 text-sm font-mono text-gray-400 group-hover:text-pink-400 transition-colors">
-                          #{trx.id.slice(0, 8)}
+                      <tr key={trx.id} className="hover:bg-gray-50 transition-colors align-top">
+                        <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
+                          <p>{formatTime(trx.created_at)}</p>
+                          <p className="text-[10px] font-mono text-gray-300 mt-0.5">#{trx.id.slice(0, 8)}</p>
                         </td>
-                        <td className="px-6 py-4 text-right font-bold text-gray-700">{formatIDR(trx.total_harga)}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-1">
+                            {trx.transaction_items?.map((item, i) => (
+                              <span key={i} className="text-sm text-gray-600">
+                                <span className="font-medium">{item.products?.name ?? '—'}</span>
+                                <span className="text-gray-400"> × {item.quantity}</span>
+                                <span className="text-pink-400 ml-1 text-xs">({formatIDR(item.subtotal)})</span>
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                          <p className="font-bold text-gray-700">{formatIDR(trx.total_harga)}</p>
+                          {trx.diskon > 0 && (
+                            <p className="text-xs text-amber-500 font-medium">Diskon {formatIDR(trx.diskon)}</p>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -515,7 +553,7 @@ export default function Laporan() {
                 disabled={history.length === 0}
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-bold rounded-xl hover:bg-green-700 transition-all active:scale-95 disabled:opacity-40 shadow-sm"
               >
-                ⬇ Export CSV
+                ⬇ Export Riwayat
               </button>
             </div>
             <div className="overflow-x-auto">

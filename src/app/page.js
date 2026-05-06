@@ -31,6 +31,7 @@ export default function Home() {
   const [cart, setCart] = useState([])
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState(null)
+  const [searchTerm, setSearchTerm] = useState('')
 
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type })
@@ -107,6 +108,10 @@ export default function Home() {
   }
 
   const [processing, setProcessing] = useState(false)
+  const [voucher, setVoucher] = useState(0)
+
+  const totalTagihan = Math.max(0, totalHarga - voucher)
+  const VOUCHER_OPTIONS = [1000, 2000, 3000, 4000, 5000]
 
   // 5. Checkout Logic
   const handleCheckout = async () => {
@@ -118,9 +123,10 @@ export default function Home() {
       // Step 1: Insert Transaction Header
       const { data: trx, error: trxError } = await supabase
         .from('transactions')
-        .insert([
-          { total_harga: totalHarga }
-        ])
+        .insert([{
+          total_harga: totalTagihan,
+          diskon: voucher
+        }])
         .select()
         .single()
 
@@ -155,6 +161,7 @@ export default function Home() {
 
       // Success Flow
       setCart([])
+      setVoucher(0)
       await getData()
       showToast('Transaksi berhasil & stok terupdate!', 'success')
 
@@ -177,6 +184,16 @@ export default function Home() {
             <div>
               <h1 className="text-2xl font-bold text-pink-500 tracking-tight">SmartCashier</h1>
               <p className="text-gray-400 text-sm">Ketuk produk untuk menambah ke keranjang</p>
+              <div className="mt-3 relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                <input
+                  type="text"
+                  placeholder="Cari produk..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-50 transition-all"
+                />
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Link
@@ -200,7 +217,9 @@ export default function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4">
-              {products.map((product) => (
+              {products
+                .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                .map((product) => (
                 <button
                   key={product.id}
                   disabled={processing}
@@ -278,14 +297,54 @@ export default function Home() {
 
           {/* SUMMARY & TOTAL */}
           <div className="mt-auto border-t border-gray-100 pt-6 space-y-4">
+
+            {/* VOUCHER SELECTOR */}
+            <div className="bg-amber-50 border border-amber-100 rounded-2xl p-3">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">🎟 Voucher Diskon</span>
+                {voucher > 0 && (
+                  <button
+                    onClick={() => setVoucher(0)}
+                    className="text-[10px] text-amber-500 hover:text-amber-700 font-bold transition-colors"
+                  >
+                    Hapus
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-1.5 flex-wrap">
+                {VOUCHER_OPTIONS.map(v => (
+                  <button
+                    key={v}
+                    disabled={processing || cart.length === 0}
+                    onClick={() => setVoucher(prev => prev === v ? 0 : v)}
+                    className={`flex-1 min-w-[52px] py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                      voucher === v
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                        : 'bg-white text-amber-600 border-amber-200 hover:border-amber-400'
+                    } disabled:opacity-40`}
+                  >
+                    -{(v/1000).toFixed(0)}rb
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex justify-between items-center">
               <span className="text-gray-400 text-sm">Subtotal</span>
               <span className="font-semibold text-gray-700">{formatIDR(totalHarga)}</span>
             </div>
+
+            {voucher > 0 && (
+              <div className="flex justify-between items-center">
+                <span className="text-amber-600 text-sm font-medium">Diskon Voucher</span>
+                <span className="font-bold text-amber-600">- {formatIDR(voucher)}</span>
+              </div>
+            )}
+
             <div className="flex justify-between items-end border-t border-gray-100 pt-4">
               <span className="text-lg font-bold text-gray-600">Total Tagihan</span>
               <span className="text-3xl font-black text-pink-500 tracking-tighter">
-                {formatIDR(totalHarga)}
+                {formatIDR(totalTagihan)}
               </span>
             </div>
 
@@ -303,7 +362,7 @@ export default function Home() {
                   Memproses...
                 </>
               ) : (
-                'Selesai Transaksi'
+                voucher > 0 ? `Bayar ${formatIDR(totalTagihan)}` : 'Selesai Transaksi'
               )}
             </button>
           </div>
