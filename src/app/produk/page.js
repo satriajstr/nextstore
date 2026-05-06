@@ -481,16 +481,16 @@ export default function Produk() {
                             </span>
                           </td>
                           <td className="px-6 py-5 text-center">
-                            <div className="flex gap-2 justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex gap-2 justify-center transition-all">
                               <button
                                 onClick={() => setModal({ mode: 'edit', product })}
-                                className="px-3.5 py-2 bg-blue-50 text-blue-600 text-[10px] font-semibold rounded-xl hover:bg-blue-100 transition-all uppercase tracking-widest"
+                                className="px-3.5 py-2 bg-blue-50 text-blue-600 text-[10px] font-bold rounded-xl hover:bg-blue-100 transition-all uppercase tracking-widest border border-blue-100/50"
                               >
                                 Edit
                               </button>
                               <button
                                 onClick={() => handleDelete(product)}
-                                className="px-3.5 py-2 bg-red-50 text-red-500 text-[10px] font-semibold rounded-xl hover:bg-red-100 transition-all uppercase tracking-widest"
+                                className="px-3.5 py-2 bg-rose-50 text-rose-500 text-[10px] font-bold rounded-xl hover:bg-rose-100 transition-all uppercase tracking-widest border border-rose-100/50"
                               >
                                 Hapus
                               </button>

@@ -35,6 +35,11 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState('Semua')
   const [showFullCart, setShowFullCart] = useState(false)
 
+  // Checkout Modal States
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false)
+  const [amountReceived, setAmountReceived] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('Tunai')
+
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type })
     setTimeout(() => setToast(null), 4000)
@@ -115,10 +120,16 @@ export default function Home() {
 
   const totalTagihan = Math.max(0, totalHarga - voucher)
   const VOUCHER_OPTIONS = [1000, 2000, 3000, 4000, 5000]
+  
+  const kembalian = Math.max(0, (parseInt(amountReceived) || 0) - totalTagihan)
 
-  // 5. Checkout Logic
-  const handleCheckout = async () => {
+  // 5. Finalize Checkout
+  const handleFinalizeCheckout = async () => {
     if (cart.length === 0) return
+    if (paymentMethod === 'Tunai' && (parseInt(amountReceived) || 0) < totalTagihan) {
+      showToast('Uang diterima kurang dari total tagihan!', 'error')
+      return
+    }
 
     setProcessing(true)
 
@@ -165,13 +176,15 @@ export default function Home() {
       // Success Flow
       setCart([])
       setVoucher(0)
+      setAmountReceived('')
+      setShowCheckoutModal(false)
       setShowFullCart(false)
       await getData()
-      showToast('Transaksi berhasil & stok terupdate!', 'success')
+      showToast('Transaksi berhasil!', 'success')
 
     } catch (error) {
       console.error("CHECKOUT ERROR:", error)
-      showToast('Gagal memproses transaksi. Silakan coba lagi.', 'error')
+      showToast('Gagal memproses transaksi.', 'error')
     } finally {
       setProcessing(false)
     }
@@ -191,11 +204,93 @@ export default function Home() {
     <>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
+      {/* CHECKOUT MODAL (SMART CALCULATOR) */}
+      {showCheckoutModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-md p-4">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-md w-full p-8 animate-fade-in flex flex-col gap-6">
+            <div className="flex justify-between items-center">
+              <h3 className="text-xl font-bold text-gray-800">💳 Selesaikan Pembayaran</h3>
+              <button onClick={() => setShowCheckoutModal(false)} className="text-gray-300 hover:text-gray-500 text-2xl">×</button>
+            </div>
+
+            {/* Total Display */}
+            <div className="bg-pink-50 rounded-3xl p-6 text-center">
+              <p className="text-[10px] text-pink-400 font-bold uppercase tracking-[0.2em] mb-1">Total Harus Dibayar</p>
+              <h4 className="text-4xl font-bold text-pink-500 tracking-tighter">{formatIDR(totalTagihan)}</h4>
+            </div>
+
+            {/* Payment Method */}
+            <div className="flex gap-2 p-1 bg-gray-50 rounded-2xl border border-gray-100">
+              {['Tunai', 'QRIS', 'Transfer'].map(m => (
+                <button
+                  key={m}
+                  onClick={() => setPaymentMethod(m)}
+                  className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all
+                    ${paymentMethod === m ? 'bg-white text-pink-500 shadow-sm border border-pink-100' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+
+            {paymentMethod === 'Tunai' && (
+              <div className="space-y-4">
+                {/* Input Received */}
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2 px-1">Uang Diterima (Rp)</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">Rp</span>
+                    <input
+                      type="number"
+                      autoFocus
+                      value={amountReceived}
+                      onChange={(e) => setAmountReceived(e.target.value)}
+                      placeholder="Ketik jumlah uang..."
+                      className="w-full pl-11 pr-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl text-xl font-bold text-gray-800 focus:outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100/30 transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Cash Buttons */}
+                <div className="grid grid-cols-3 gap-2">
+                  <button onClick={() => setAmountReceived(totalTagihan.toString())} className="py-3 bg-white border border-gray-100 rounded-xl text-[10px] font-bold text-gray-600 hover:border-pink-200 transition-all">UANG PAS</button>
+                  <button onClick={() => setAmountReceived('10000')} className="py-3 bg-white border border-gray-100 rounded-xl text-[10px] font-bold text-gray-600 hover:border-pink-200 transition-all">10.000</button>
+                  <button onClick={() => setAmountReceived('20000')} className="py-3 bg-white border border-gray-100 rounded-xl text-[10px] font-bold text-gray-600 hover:border-pink-200 transition-all">20.000</button>
+                  <button onClick={() => setAmountReceived('50000')} className="py-3 bg-white border border-gray-100 rounded-xl text-[10px] font-bold text-gray-600 hover:border-pink-200 transition-all">50.000</button>
+                  <button onClick={() => setAmountReceived('100000')} className="py-3 bg-white border border-gray-100 rounded-xl text-[10px] font-bold text-gray-600 hover:border-pink-200 transition-all">100.000</button>
+                </div>
+
+                {/* Change Result */}
+                <div className={`p-5 rounded-2xl border transition-all flex justify-between items-center
+                  ${amountReceived >= totalTagihan ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-100'}`}>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Kembalian</span>
+                  <span className={`text-xl font-bold ${amountReceived >= totalTagihan ? 'text-green-600' : 'text-gray-300'}`}>
+                    {formatIDR(kembalian)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <button
+              disabled={processing || (paymentMethod === 'Tunai' && (parseInt(amountReceived) || 0) < totalTagihan)}
+              onClick={handleFinalizeCheckout}
+              className={`w-full py-5 rounded-[2rem] font-bold text-lg transition-all shadow-xl active:scale-[0.98]
+                ${processing || (paymentMethod === 'Tunai' && (parseInt(amountReceived) || 0) < totalTagihan)
+                  ? 'bg-gray-100 text-gray-300 shadow-none'
+                  : 'bg-pink-500 text-white hover:bg-pink-600 shadow-pink-100'
+                }`}
+            >
+              {processing ? 'Memproses...' : 'Konfirmasi & Simpan'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <main className="flex flex-col md:flex-row min-h-screen bg-gray-50 text-gray-900 font-sans relative">
 
         {/* LEFT SIDE: PRODUCT LIST */}
         <section className="w-full md:w-3/5 border-r border-gray-200">
-
+          
           <div className="sticky top-0 z-40 bg-white/70 backdrop-blur-md p-4 md:p-8 border-b border-gray-100/50">
             <header className="flex flex-col gap-6">
               <div className="flex justify-between items-start">
@@ -212,7 +307,7 @@ export default function Home() {
                   </Link>
                 </div>
               </div>
-
+              
               <div className="relative group">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-pink-400 group-focus-within:text-pink-500 transition-colors">🔍</span>
                 <input
@@ -220,7 +315,7 @@ export default function Home() {
                   placeholder="Cari produk..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl text-sm focus:outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100/30 transition-all shadow-sm font-normal"
+                  className="w-full pl-11 pr-4 py-3.5 bg-gray-200/20 backdrop-blur-sm border border-gray-200/50 rounded-2xl text-sm focus:outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100/30 transition-all shadow-sm font-normal"
                 />
               </div>
 
@@ -232,9 +327,9 @@ export default function Home() {
                       key={cat}
                       onClick={() => setSelectedCategory(cat)}
                       className={`px-5 py-2 rounded-full text-xs font-semibold whitespace-nowrap border transition-all
-                        ${selectedCategory === cat
-                          ? 'bg-pink-500 text-white border-pink-500 shadow-md shadow-pink-100'
-                          : 'bg-white text-gray-400 border-gray-200 hover:border-pink-200'}`}
+                        ${selectedCategory === cat 
+                          ? 'bg-pink-500 text-white border-pink-500 shadow-md shadow-pink-100 scale-105' 
+                          : 'bg-white/40 backdrop-blur-sm text-gray-400 border-gray-200 hover:border-pink-200 active:scale-95'}`}
                     >
                       {cat}
                     </button>
@@ -244,7 +339,7 @@ export default function Home() {
             </header>
           </div>
 
-          <div className="px-4 md:px-8 pb-24 md:pb-8">
+          <div className="px-4 md:px-8 pb-24 md:pb-8 pt-4">
             {loading ? (
               <div className="flex justify-center items-center h-64">
                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-pink-400"></div>
@@ -261,9 +356,9 @@ export default function Home() {
                     key={product.id}
                     disabled={processing}
                     onClick={() => addToCart(product)}
-                    className="flex flex-col p-5 bg-white rounded-3xl shadow-sm border border-gray-100 hover:border-pink-200 hover:shadow-xl hover:shadow-pink-50/50 transition-all active:scale-[0.98] text-left h-44 disabled:opacity-50 group"
+                    className="flex flex-col p-5 bg-white rounded-3xl shadow-sm border border-gray-100 hover:border-pink-200 hover:shadow-xl hover:shadow-pink-50/50 transition-all active:scale-90 text-left h-44 disabled:opacity-50 group overflow-hidden relative"
                   >
-                    <div className="flex flex-col gap-1.5 items-start">
+                    <div className="flex flex-col gap-1.5 items-start relative z-10">
                       <span className="text-[9px] bg-pink-50 text-pink-500 px-2.5 py-0.5 rounded-full font-medium uppercase tracking-widest">
                         {product.category || 'Umum'}
                       </span>
@@ -271,10 +366,12 @@ export default function Home() {
                         {product.name}
                       </span>
                     </div>
-                    <div className="mt-auto">
+                    <div className="mt-auto relative z-10">
                       <span className="text-pink-500 font-bold block text-lg mb-1">{formatIDR(product.harga_jual)}</span>
                       <span className="text-[11px] text-gray-400 font-normal">Stok: {product.stock ?? 0}</span>
                     </div>
+                    {/* Visual Feedback Overlay */}
+                    <div className="absolute inset-0 bg-pink-500/0 group-active:bg-pink-500/5 transition-colors duration-100"></div>
                   </button>
                 ))}
               </div>
@@ -287,11 +384,11 @@ export default function Home() {
           fixed inset-0 z-[60] bg-white flex flex-col transition-all duration-300 md:static md:z-auto md:w-2/5 md:bg-white md:shadow-none md:translate-y-0
           ${showFullCart ? 'translate-y-0' : 'translate-y-full md:translate-y-0'}
         `}>
-
+          
           <div className="flex justify-between items-center p-6 md:px-8 md:pt-8 border-b md:border-none border-gray-100">
             <h2 className="text-2xl font-bold flex items-center gap-3 text-gray-800 tracking-tight">
               🛒 Keranjang
-              <span className="bg-pink-100 text-pink-600 text-xs px-3 py-1 rounded-full font-bold">
+              <span className="bg-pink-100 text-pink-600 text-xs px-3 py-1 rounded-full font-bold animate-bounce">
                 {cart.reduce((a, b) => a + b.quantity, 0)} Item
               </span>
             </h2>
@@ -305,7 +402,7 @@ export default function Home() {
                   Kosongkan
                 </button>
               )}
-              <button
+              <button 
                 onClick={() => setShowFullCart(false)}
                 className="md:hidden w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-xl"
               >
@@ -324,7 +421,7 @@ export default function Home() {
                 </div>
               ) : (
                 cart.map((item) => (
-                  <div key={item.id} className="flex justify-between items-center group">
+                  <div key={item.id} className="flex justify-between items-center group animate-slide-in">
                     <div className="flex-1">
                       <h4 className="font-semibold text-gray-800 text-sm leading-tight mb-1">{item.name}</h4>
                       <p className="text-xs text-pink-500 font-semibold">
@@ -335,7 +432,7 @@ export default function Home() {
                       <button
                         disabled={processing}
                         onClick={() => removeFromCart(item.id)}
-                        className="w-8 h-8 flex items-center justify-center bg-gray-50 border border-gray-200 rounded-lg text-gray-400 hover:text-pink-500 hover:border-pink-100 transition-all"
+                        className="w-8 h-8 flex items-center justify-center bg-gray-50 border border-gray-200 rounded-lg text-gray-400 hover:text-pink-500 hover:border-pink-100 transition-all active:scale-90"
                       >
                         -
                       </button>
@@ -343,7 +440,7 @@ export default function Home() {
                       <button
                         disabled={processing}
                         onClick={() => addToCart(item)}
-                        className="w-8 h-8 flex items-center justify-center bg-pink-500 rounded-lg text-white shadow-md shadow-pink-100 hover:bg-pink-600 transition-all"
+                        className="w-8 h-8 flex items-center justify-center bg-pink-500 rounded-lg text-white shadow-md shadow-pink-100 hover:bg-pink-600 transition-all active:scale-90"
                       >
                         +
                       </button>
@@ -356,7 +453,7 @@ export default function Home() {
             {/* SUMMARY */}
             <div className="mt-auto border-t border-gray-100 pt-6 space-y-6">
               {/* VOUCHER */}
-              <div className="bg-amber-50 border border-amber-100 rounded-[2rem] p-5">
+              <div className="bg-amber-50 border border-amber-100 rounded-[2rem] p-5 shadow-inner">
                 <div className="flex items-center gap-2 mb-4 px-1">
                   <span className="text-amber-700 text-sm">🖋</span>
                   <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">VOUCHER DISKON</span>
@@ -368,11 +465,11 @@ export default function Home() {
                       disabled={processing || cart.length === 0}
                       onClick={() => setVoucher(prev => prev === v ? 0 : v)}
                       className={`flex-1 min-w-[70px] py-3 rounded-xl text-xs font-bold transition-all border
-                        ${voucher === v
-                          ? 'bg-amber-100 text-amber-700 border-amber-300 shadow-sm'
+                        ${voucher === v 
+                          ? 'bg-amber-100 text-amber-700 border-amber-300 shadow-sm scale-105' 
                           : 'bg-white/60 text-amber-400 border-amber-100 hover:border-amber-200 hover:text-amber-500'}`}
                     >
-                      -{(v / 1000).toFixed(0)}rb
+                      -{(v/1000).toFixed(0)}rb
                     </button>
                   ))}
                 </div>
@@ -398,14 +495,14 @@ export default function Home() {
                     {formatIDR(totalTagihan)}
                   </span>
                 </div>
-
+                
                 <button
                   disabled={cart.length === 0 || processing}
-                  onClick={handleCheckout}
-                  className={`w-full py-5 rounded-[2rem] font-bold text-lg transition-all shadow-xl shadow-pink-100 active:scale-[0.98]
+                  onClick={() => setShowCheckoutModal(true)}
+                  className={`w-full py-5 rounded-[2rem] font-bold text-lg transition-all shadow-xl active:scale-[0.98]
                     ${cart.length === 0 || processing
                       ? 'bg-gray-100 text-gray-300 shadow-none'
-                      : 'bg-pink-500 text-white hover:bg-pink-600'
+                      : 'bg-pink-500 text-white hover:bg-pink-600 shadow-pink-100'
                     }`}
                 >
                   {processing ? 'Memproses...' : 'Selesai Transaksi'}
@@ -419,9 +516,9 @@ export default function Home() {
       {/* MOBILE TRIGGER (ONLY IF CART) */}
       {cart.length > 0 && !showFullCart && (
         <div className="md:hidden fixed bottom-6 left-6 right-6 z-50 animate-fade-in">
-          <button
+          <button 
             onClick={() => setShowFullCart(true)}
-            className="w-full bg-gray-900 text-white p-5 rounded-[2.5rem] shadow-2xl flex justify-between items-center ring-8 ring-white/80"
+            className="w-full bg-gray-900 text-white p-5 rounded-[2.5rem] shadow-2xl flex justify-between items-center ring-8 ring-white/80 active:scale-95 transition-transform"
           >
             <div className="flex items-center gap-4">
               <div className="bg-pink-500 w-10 h-10 rounded-full flex items-center justify-center font-bold">
