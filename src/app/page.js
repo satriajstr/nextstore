@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import Link from 'next/link'
 
@@ -34,6 +34,12 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('Semua')
   const [showFullCart, setShowFullCart] = useState(false)
+
+  // Swipe & Animation Management
+  const touchStart = useRef(0)
+  const touchEnd = useRef(0)
+  const categoryScrollRef = useRef(null)
+  const [swipeDirection, setSwipeDirection] = useState('') // 'left' or 'right'
 
   // Checkout Modal States
   const [showCheckoutModal, setShowCheckoutModal] = useState(false)
@@ -200,8 +206,63 @@ export default function Home() {
   // Extract Categories
   const categoriesList = ['Semua', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))]
 
+  // Swipe Logic Implementation
+  const handleTouchStart = (e) => {
+    touchStart.current = e.targetTouches[0].clientX
+  }
+
+  const handleTouchMove = (e) => {
+    touchEnd.current = e.targetTouches[0].clientX
+  }
+
+  const handleTouchEnd = () => {
+    const minSwipeDistance = 70
+    const distance = touchStart.current - touchEnd.current
+    const isLeftSwipe = distance > minSwipeDistance
+    const isRightSwipe = distance < -minSwipeDistance
+
+    if (isLeftSwipe || isRightSwipe) {
+      const currentIndex = categoriesList.indexOf(selectedCategory)
+      let nextIndex = currentIndex
+
+      if (isLeftSwipe && currentIndex < categoriesList.length - 1) {
+        nextIndex = currentIndex + 1
+        setSwipeDirection('right') // Content moves from right
+      } else if (isRightSwipe && currentIndex > 0) {
+        nextIndex = currentIndex - 1
+        setSwipeDirection('left') // Content moves from left
+      }
+
+      if (nextIndex !== currentIndex) {
+        setSelectedCategory(categoriesList[nextIndex])
+        
+        // Reset direction after animation
+        setTimeout(() => setSwipeDirection(''), 400)
+
+        // Auto-scroll the category tab into view
+        const tabElement = document.getElementById(`cat-tab-${nextIndex}`)
+        if (tabElement) {
+          tabElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+        }
+      }
+    }
+  }
+
   return (
     <>
+      <style jsx global>{`
+        @keyframes slideInFromRight {
+          from { transform: translateX(30px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideInFromLeft {
+          from { transform: translateX(-30px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        .animate-slide-right { animation: slideInFromRight 0.3s ease-out forwards; }
+        .animate-slide-left { animation: slideInFromLeft 0.3s ease-out forwards; }
+      `}</style>
+
       <Toast toast={toast} onClose={() => setToast(null)} />
 
       {/* CHECKOUT MODAL (SMART CALCULATOR) */}
@@ -289,7 +350,12 @@ export default function Home() {
       <main className="flex flex-col md:flex-row min-h-screen bg-gray-50 text-gray-900 font-sans relative">
 
         {/* LEFT SIDE: PRODUCT LIST */}
-        <section className="w-full md:w-3/5 border-r border-gray-200">
+        <section 
+          className="w-full md:w-3/5 border-r border-gray-200"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
           
           <div className="sticky top-0 z-40 bg-white/70 backdrop-blur-md p-4 md:p-8 border-b border-gray-100/50">
             <header className="flex flex-col gap-6">
@@ -321,11 +387,20 @@ export default function Home() {
 
               {/* CATEGORY TABS */}
               {categoriesList.length > 1 && (
-                <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar -mx-1 px-1">
-                  {categoriesList.map(cat => (
+                <div 
+                  ref={categoryScrollRef}
+                  className="flex gap-2 overflow-x-auto pb-1 no-scrollbar -mx-1 px-1"
+                >
+                  {categoriesList.map((cat, idx) => (
                     <button
                       key={cat}
-                      onClick={() => setSelectedCategory(cat)}
+                      id={`cat-tab-${idx}`}
+                      onClick={() => {
+                        const currentIndex = categoriesList.indexOf(selectedCategory)
+                        setSwipeDirection(idx > currentIndex ? 'right' : 'left')
+                        setSelectedCategory(cat)
+                        setTimeout(() => setSwipeDirection(''), 400)
+                      }}
                       className={`px-5 py-2 rounded-full text-xs font-semibold whitespace-nowrap border transition-all
                         ${selectedCategory === cat 
                           ? 'bg-pink-500 text-white border-pink-500 shadow-md shadow-pink-100 scale-105' 
@@ -339,7 +414,7 @@ export default function Home() {
             </header>
           </div>
 
-          <div className="px-4 md:px-8 pb-24 md:pb-8 pt-4">
+          <div className={`px-4 md:px-8 pb-24 md:pb-8 pt-4 transition-all duration-300 ${swipeDirection === 'right' ? 'animate-slide-right' : swipeDirection === 'left' ? 'animate-slide-left' : ''}`}>
             {loading ? (
               <div className="flex justify-center items-center h-64">
                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-pink-400"></div>
@@ -350,7 +425,7 @@ export default function Home() {
                 <button onClick={() => { setSearchTerm(''); setSelectedCategory('Semua') }} className="text-pink-500 text-xs font-bold mt-2 hover:underline">Reset Filter</button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              <div key={selectedCategory} className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredProducts.map((product) => (
                   <button
                     key={product.id}
