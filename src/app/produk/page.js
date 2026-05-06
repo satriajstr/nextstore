@@ -20,7 +20,7 @@ function Toast({ toast, onClose }) {
           {toast.message}
         </p>
       </div>
-      <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
+      <button onClose={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
     </div>
   )
 }
@@ -52,16 +52,28 @@ function ConfirmDialog({ confirm, onYes, onNo }) {
 
 // ─── Product Form Modal ───────────────────────────────────────────────────────
 function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
+  const [isManualCategory, setIsManualCategory] = useState(false)
   const [form, setForm] = useState({
     name: product?.name ?? '',
     harga_modal: product?.harga_modal ?? '',
     harga_jual: product?.harga_jual ?? '',
     stock: product?.stock ?? '',
-    category: product?.category ?? 'Umum',
+    category: product?.category ?? (categories.length > 0 ? categories[0] : 'Umum'),
   })
 
   const handleChange = (e) => {
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
+    const { name, value } = e.target
+    if (name === 'category_select') {
+      if (value === 'ADD_NEW') {
+        setIsManualCategory(true)
+        setForm(prev => ({ ...prev, category: '' }))
+      } else {
+        setIsManualCategory(false)
+        setForm(prev => ({ ...prev, category: value }))
+      }
+    } else {
+      setForm(prev => ({ ...prev, [name]: value }))
+    }
   }
 
   const handleSubmit = (e) => {
@@ -92,23 +104,47 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {/* Kategori */}
+          {/* Kategori (Smart Dropdown) */}
           <div>
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">Kategori Produk</label>
             <div className="relative">
-              <input
-                name="category"
-                list="category-suggestions"
-                value={form.category}
-                onChange={handleChange}
-                placeholder="Contoh: Gelang, Strap HP, Gantungan Kunci ..."
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm transition-all shadow-sm font-medium"
-              />
-              <datalist id="category-suggestions">
-                {categories.map(cat => (
-                  <option key={cat} value={cat} />
-                ))}
-              </datalist>
+              {!isManualCategory && categories.length > 0 ? (
+                <div className="relative">
+                  <select
+                    name="category_select"
+                    value={form.category}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm transition-all shadow-sm font-medium appearance-none bg-white"
+                  >
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                    <option value="ADD_NEW" className="text-pink-500 font-bold">+ Tambah Kategori Baru...</option>
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    name="category"
+                    autoFocus
+                    value={form.category}
+                    onChange={handleChange}
+                    placeholder="Ketik kategori baru..."
+                    className="flex-1 px-4 py-3 rounded-xl border border-pink-200 bg-pink-50/30 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm transition-all shadow-sm font-medium"
+                  />
+                  {categories.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsManualCategory(false)}
+                      className="px-3 bg-gray-100 text-gray-400 rounded-xl hover:bg-gray-200 transition-all text-xs font-bold"
+                      title="Kembali ke daftar"
+                    >
+                      Batal
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
