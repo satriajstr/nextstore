@@ -101,7 +101,7 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
                 list="category-suggestions"
                 value={form.category}
                 onChange={handleChange}
-                placeholder="Contoh: Gelang, Strap HP, Gantungan Kunci.."
+                placeholder="Contoh: Gelang, Strap HP, Gantungan Kunci ..."
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm transition-all shadow-sm font-medium"
               />
               <datalist id="category-suggestions">
@@ -120,7 +120,7 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
               value={form.name}
               onChange={handleChange}
               required
-              placeholder="Contoh: Beras 5kg"
+              placeholder="Contoh: Strap 10, Gelang 10 ..."
               className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm transition-all shadow-sm font-medium"
             />
           </div>
@@ -305,7 +305,7 @@ export default function Produk() {
   // ─── EXPORT CSV ─────────────────────────────────────────────────────────────
   const exportProductsCSV = () => {
     if (products.length === 0) return
-    
+
     try {
       const headers = ['Nama Produk', 'Kategori', 'Harga Modal', 'Harga Jual', 'Margin (Rp)', 'Margin (%)', 'Stok']
       const rows = products.map(p => {
@@ -349,7 +349,7 @@ export default function Produk() {
   )
 
   const handleSave = modal?.mode === 'add' ? handleAdd : handleEdit
-  
+
   // Ambil daftar kategori unik untuk saran
   const uniqueCategories = Array.from(new Set(products.map(p => p.category).filter(Boolean)))
 
