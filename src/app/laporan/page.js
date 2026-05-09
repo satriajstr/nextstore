@@ -427,7 +427,7 @@ export default function Laporan() {
           transaction_id,
           quantity,
           subtotal,
-          products (name, harga_modal, harga_jual)
+          products (name, category, harga_modal, harga_jual)
         `)
         .in('transaction_id', trxList.map(t => t.id))
 
@@ -441,6 +441,7 @@ export default function Laporan() {
         'Waktu (WIB)',
         'ID Transaksi',
         'Nama Produk',
+        'Kategori',
         'Metode',
         'Harga Modal',
         'Harga Jual',
@@ -469,6 +470,7 @@ export default function Laporan() {
           waktu,
           item.transaction_id.slice(0, 8),
           `"${item.products.name}"`,
+          `"${item.products.category || 'Umum'}"`,
           metode,
           item.products.harga_modal,
           item.products.harga_jual,
