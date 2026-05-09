@@ -59,6 +59,8 @@ function ConfirmDialog({ confirm, onYes, onNo }) {
 export default function Laporan() {
   const [transactions, setTransactions] = useState([])
   const [totalHariIni, setTotalHariIni] = useState(0)
+  const [totalCash, setTotalCash] = useState(0)
+  const [totalQRIS, setTotalQRIS] = useState(0)
   const [loading, setLoading] = useState(true)
   const [isClosed, setIsClosed] = useState(false)
   const [closing, setClosing] = useState(false)
@@ -96,7 +98,7 @@ export default function Laporan() {
     const { data, error } = await supabase
       .from('transactions')
       .select(`
-        id, created_at, total_harga, diskon,
+        id, created_at, total_harga, diskon, payment_method,
         transaction_items (
           quantity, subtotal,
           products ( name )
@@ -110,7 +112,12 @@ export default function Laporan() {
     } else {
       setTransactions(data || [])
       const sum = data?.reduce((acc, trx) => acc + trx.total_harga, 0) || 0
+      const cash = data?.filter(t => t.payment_method === 'Tunai').reduce((acc, t) => acc + t.total_harga, 0) || 0
+      const qris = data?.filter(t => t.payment_method !== 'Tunai').reduce((acc, t) => acc + t.total_harga, 0) || 0
+      
       setTotalHariIni(sum)
+      setTotalCash(cash)
+      setTotalQRIS(qris)
     }
     setLoading(false)
   }
@@ -138,6 +145,64 @@ export default function Laporan() {
     checkStatus()
     fetchHistory()
   }, [])
+
+  // ─── Batal Transaksi ──────────────────────────────────────────────────────
+  const handleVoidTransaction = async (trx) => {
+    if (isClosed) {
+      showToast('Tidak bisa membatalkan transaksi pada hari yang sudah ditutup.\nBuka hari terlebih dahulu.', 'error')
+      return
+    }
+
+    const confirmed = await showConfirm({
+      icon: '🗑️',
+      title: 'Batalkan Transaksi?',
+      message: `Yakin membatalkan transaksi #${trx.id.slice(0, 8)} senilai ${formatIDR(trx.total_harga)}?\nStok barang akan otomatis dikembalikan.`,
+      labelYes: 'Ya, Batalkan',
+      labelNo: 'Kembali',
+      danger: true,
+    })
+
+    if (!confirmed) return
+
+    try {
+      // 1. Dapatkan detail items untuk mengembalikan stok
+      const { data: items, error: fetchErr } = await supabase
+        .from('transaction_items')
+        .select('product_id, quantity')
+        .eq('transaction_id', trx.id)
+
+      if (fetchErr) throw fetchErr
+
+      // 2. Kembalikan stok masing-masing barang
+      for (const item of items) {
+        const { data: product } = await supabase
+          .from('products')
+          .select('stock')
+          .eq('id', item.product_id)
+          .single()
+
+        if (product) {
+          await supabase
+            .from('products')
+            .update({ stock: (product.stock || 0) + item.quantity })
+            .eq('id', item.product_id)
+        }
+      }
+
+      // 3. Hapus transaksi (Hapus items dulu untuk menghindari error foreign key)
+      await supabase.from('transaction_items').delete().eq('transaction_id', trx.id)
+      
+      const { error: deleteErr } = await supabase.from('transactions').delete().eq('id', trx.id)
+
+      if (deleteErr) throw deleteErr
+
+      showToast('Transaksi dibatalkan dan stok dikembalikan.', 'success')
+      fetchTransactions()
+    } catch (error) {
+      showToast('Gagal membatalkan transaksi.', 'error')
+      console.error(error)
+    }
+  }
 
   // ─── Tutup Hari ───────────────────────────────────────────────────────────
   const handleCloseDay = async () => {
@@ -168,12 +233,14 @@ export default function Laporan() {
     try {
       const { data: existing } = await supabase
         .from('daily_summary')
-        .select('carry_over, total_modal, jumlah_transaksi, total_diskon')
+        .select('carry_over, carry_modal, carry_diskon, carry_trx_count')
         .eq('date', today)
         .maybeSingle()
 
       const carryPenjualan = existing?.carry_over ?? 0
-      const carryDiskon = existing?.total_diskon ?? 0
+      const carryModal = existing?.carry_modal ?? 0
+      const carryDiskon = existing?.carry_diskon ?? 0
+      const carryTrxCount = existing?.carry_trx_count ?? 0
 
       let modalSesi = 0
       let diskonSesi = transactions.reduce((acc, trx) => acc + (trx.diskon || 0), 0)
@@ -190,20 +257,25 @@ export default function Laporan() {
       }
 
       const totalPenjualan = carryPenjualan + totalHariIni
-      const totalModal = (existing?.total_modal ?? 0) + modalSesi
+      const totalModal = carryModal + modalSesi
       const totalDiskon = carryDiskon + diskonSesi
       const keuntunganBersih = totalPenjualan - totalModal
+      const jumlahTrx = carryTrxCount + transactions.length
 
       const { error } = await supabase
         .from('daily_summary')
         .upsert({
           date: today,
           total_penjualan: totalPenjualan,
-          jumlah_transaksi: (existing?.jumlah_transaksi ?? 0) + transactions.length,
+          jumlah_transaksi: jumlahTrx,
           total_modal: totalModal,
+          total_diskon: totalDiskon,
           keuntungan_bersih: keuntunganBersih,
           status: 'closed',
-          carry_over: carryPenjualan
+          carry_over: carryPenjualan,
+          carry_modal: carryModal,
+          carry_diskon: carryDiskon,
+          carry_trx_count: carryTrxCount
         }, { onConflict: 'date' })
 
       if (error) throw error
@@ -256,13 +328,19 @@ export default function Laporan() {
       if (resetData) {
         const { data: currentSummary } = await supabase
           .from('daily_summary')
-          .select('total_penjualan')
+          .select('total_penjualan, total_modal, total_diskon, jumlah_transaksi')
           .eq('date', today)
           .single()
 
         await supabase
           .from('daily_summary')
-          .update({ status: 'open', carry_over: currentSummary?.total_penjualan ?? 0 })
+          .update({ 
+            status: 'open', 
+            carry_over: currentSummary?.total_penjualan ?? 0,
+            carry_modal: currentSummary?.total_modal ?? 0,
+            carry_diskon: currentSummary?.total_diskon ?? 0,
+            carry_trx_count: currentSummary?.jumlah_transaksi ?? 0
+          })
           .eq('date', today)
 
         const { error: itemsErr } = await supabase
@@ -281,7 +359,7 @@ export default function Laporan() {
       } else {
         await supabase
           .from('daily_summary')
-          .update({ status: 'open', carry_over: 0 })
+          .update({ status: 'open' })
           .eq('date', today)
 
         showToast('Hari dibuka kembali. Data penjualan tetap ada.', 'success')
@@ -331,7 +409,7 @@ export default function Laporan() {
       // 1. Ambil semua transaksi pada tanggal tersebut
       const { data: trxList, error: trxErr } = await supabase
         .from('transactions')
-        .select('id, created_at, total_harga, diskon')
+        .select('id, created_at, total_harga, diskon, payment_method')
         .gte('created_at', dateStr)
         .lt('created_at', new Date(new Date(dateStr).getTime() + 86400000).toISOString().split('T')[0])
         .order('created_at', { ascending: true })
@@ -363,13 +441,14 @@ export default function Laporan() {
         'Waktu (WIB)',
         'ID Transaksi',
         'Nama Produk',
+        'Metode',
         'Harga Modal',
         'Harga Jual',
         'Qty',
-        'Subtotal Jual',
-        'Diskon Trx',
+        'Subtotal Jual (Kotor)',
+        'Diskon (Proporsional)',
         'Subtotal Modal',
-        'Keuntungan Item'
+        'Keuntungan Bersih Item'
       ]
 
       const rows = items.map(item => {
@@ -378,20 +457,26 @@ export default function Laporan() {
           hour: '2-digit', minute: '2-digit', second: '2-digit'
         })
         const subModal = item.products.harga_modal * item.quantity
-        const keuntunganItem = item.subtotal - subModal
-        const diskonTrx = trxList.find(t => t.id === item.transaction_id)?.diskon || 0
+        const fullTrx = trxList.find(t => t.id === item.transaction_id)
+        const diskonTrx = fullTrx?.diskon || 0
+        const metode = fullTrx?.payment_method || 'Tunai'
+        
+        const totalKotorTrx = fullTrx.total_harga + diskonTrx
+        const diskonProporsional = totalKotorTrx > 0 ? (item.subtotal / totalKotorTrx) * diskonTrx : 0
+        const keuntunganBersihItem = item.subtotal - diskonProporsional - subModal
 
         return [
           waktu,
           item.transaction_id.slice(0, 8),
           `"${item.products.name}"`,
+          metode,
           item.products.harga_modal,
           item.products.harga_jual,
           item.quantity,
           item.subtotal,
-          diskonTrx,
+          diskonProporsional.toFixed(2),
           subModal,
-          keuntunganItem
+          keuntunganBersihItem.toFixed(2)
         ]
       })
 
@@ -448,6 +533,17 @@ export default function Laporan() {
               <h2 className="text-4xl md:text-5xl font-black tracking-tighter">
                 {formatIDR(totalHariIni)}
               </h2>
+              <div className="flex gap-4 mt-3">
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-pink-100 uppercase font-bold opacity-60">Tunai</span>
+                  <span className="text-lg font-bold text-green-300">{formatIDR(totalCash)}</span>
+                </div>
+                <div className="w-[1px] h-8 bg-white/20 self-center"></div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-pink-100 uppercase font-bold opacity-60">QRIS / Non-Tunai</span>
+                  <span className="text-lg font-bold text-red-300">{formatIDR(totalQRIS)}</span>
+                </div>
+              </div>
             </div>
 
             <div className="flex gap-4 items-center">
@@ -506,7 +602,9 @@ export default function Laporan() {
                     <tr className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50">
                       <th className="px-6 py-4">Waktu</th>
                       <th className="px-6 py-4">Produk yang Dibeli</th>
+                      <th className="px-6 py-4 text-center">Metode</th>
                       <th className="px-6 py-4 text-right">Total</th>
+                      <th className="px-6 py-4 text-center">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -527,11 +625,26 @@ export default function Laporan() {
                             ))}
                           </div>
                         </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-widest
+                            ${trx.payment_method === 'Tunai' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {trx.payment_method || 'Tunai'}
+                          </span>
+                        </td>
                         <td className="px-6 py-4 text-right whitespace-nowrap">
                           <p className="font-bold text-gray-700">{formatIDR(trx.total_harga)}</p>
                           {trx.diskon > 0 && (
                             <p className="text-xs text-amber-500 font-medium">Diskon {formatIDR(trx.diskon)}</p>
                           )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <button
+                            onClick={() => handleVoidTransaction(trx)}
+                            disabled={isClosed}
+                            className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-30 disabled:hover:bg-red-50 text-[10px] font-bold rounded-lg transition-colors uppercase tracking-widest"
+                          >
+                            Batal
+                          </button>
                         </td>
                       </tr>
                     ))}

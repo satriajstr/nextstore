@@ -126,7 +126,7 @@ export default function Home() {
 
   const totalTagihan = Math.max(0, totalHarga - voucher)
   const VOUCHER_OPTIONS = [1000, 2000, 3000, 4000, 5000]
-  
+
   const kembalian = Math.max(0, (parseInt(amountReceived) || 0) - totalTagihan)
 
   // 5. Finalize Checkout
@@ -145,7 +145,8 @@ export default function Home() {
         .from('transactions')
         .insert([{
           total_harga: totalTagihan,
-          diskon: voucher
+          diskon: voucher,
+          payment_method: paymentMethod
         }])
         .select()
         .single()
@@ -235,7 +236,7 @@ export default function Home() {
 
       if (nextIndex !== currentIndex) {
         setSelectedCategory(categoriesList[nextIndex])
-        
+
         // Reset direction after animation
         setTimeout(() => setSwipeDirection(''), 400)
 
@@ -250,18 +251,6 @@ export default function Home() {
 
   return (
     <>
-      <style jsx global>{`
-        @keyframes slideInFromRight {
-          from { transform: translateX(30px); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes slideInFromLeft {
-          from { transform: translateX(-30px); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-        .animate-slide-right { animation: slideInFromRight 0.3s ease-out forwards; }
-        .animate-slide-left { animation: slideInFromLeft 0.3s ease-out forwards; }
-      `}</style>
 
       <Toast toast={toast} onClose={() => setToast(null)} />
 
@@ -350,13 +339,13 @@ export default function Home() {
       <main className="flex flex-col md:flex-row min-h-screen bg-gray-50 text-gray-900 font-sans relative">
 
         {/* LEFT SIDE: PRODUCT LIST */}
-        <section 
+        <section
           className="w-full md:w-3/5 border-r border-gray-200"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-          
+
           <div className="sticky top-0 z-40 bg-white/70 backdrop-blur-md p-4 md:p-8 border-b border-gray-100/50">
             <header className="flex flex-col gap-6">
               <div className="flex justify-between items-start">
@@ -373,7 +362,7 @@ export default function Home() {
                   </Link>
                 </div>
               </div>
-              
+
               <div className="relative group">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-pink-400 group-focus-within:text-pink-500 transition-colors">🔍</span>
                 <input
@@ -387,7 +376,7 @@ export default function Home() {
 
               {/* CATEGORY TABS */}
               {categoriesList.length > 1 && (
-                <div 
+                <div
                   ref={categoryScrollRef}
                   className="flex gap-2 overflow-x-auto pb-1 no-scrollbar -mx-1 px-1"
                 >
@@ -402,8 +391,8 @@ export default function Home() {
                         setTimeout(() => setSwipeDirection(''), 400)
                       }}
                       className={`px-5 py-2 rounded-full text-xs font-semibold whitespace-nowrap border transition-all
-                        ${selectedCategory === cat 
-                          ? 'bg-pink-500 text-white border-pink-500 shadow-md shadow-pink-100 scale-105' 
+                        ${selectedCategory === cat
+                          ? 'bg-pink-500 text-white border-pink-500 shadow-md shadow-pink-100 scale-105'
                           : 'bg-white/40 backdrop-blur-sm text-gray-400 border-gray-200 hover:border-pink-200 active:scale-95'}`}
                     >
                       {cat}
@@ -459,7 +448,7 @@ export default function Home() {
           fixed inset-0 z-[60] bg-white flex flex-col transition-all duration-300 md:static md:z-auto md:w-2/5 md:bg-white md:shadow-none md:translate-y-0
           ${showFullCart ? 'translate-y-0' : 'translate-y-full md:translate-y-0'}
         `}>
-          
+
           <div className="flex justify-between items-center p-6 md:px-8 md:pt-8 border-b md:border-none border-gray-100">
             <h2 className="text-2xl font-bold flex items-center gap-3 text-gray-800 tracking-tight">
               🛒 Keranjang
@@ -477,7 +466,7 @@ export default function Home() {
                   Kosongkan
                 </button>
               )}
-              <button 
+              <button
                 onClick={() => setShowFullCart(false)}
                 className="md:hidden w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-xl"
               >
@@ -530,7 +519,7 @@ export default function Home() {
               {/* VOUCHER */}
               <div className="bg-amber-50 border border-amber-100 rounded-[2rem] p-5 shadow-inner">
                 <div className="flex items-center gap-2 mb-4 px-1">
-                  <span className="text-amber-700 text-sm">🖋</span>
+                  <span className="text-amber-700 text-sm">🏷️</span>
                   <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">VOUCHER DISKON</span>
                 </div>
                 <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
@@ -540,11 +529,11 @@ export default function Home() {
                       disabled={processing || cart.length === 0}
                       onClick={() => setVoucher(prev => prev === v ? 0 : v)}
                       className={`flex-1 min-w-[70px] py-3 rounded-xl text-xs font-bold transition-all border
-                        ${voucher === v 
-                          ? 'bg-amber-100 text-amber-700 border-amber-300 shadow-sm scale-105' 
+                        ${voucher === v
+                          ? 'bg-amber-100 text-amber-700 border-amber-300 shadow-sm scale-105'
                           : 'bg-white/60 text-amber-400 border-amber-100 hover:border-amber-200 hover:text-amber-500'}`}
                     >
-                      -{(v/1000).toFixed(0)}rb
+                      -{(v / 1000).toFixed(0)}rb
                     </button>
                   ))}
                 </div>
@@ -570,7 +559,7 @@ export default function Home() {
                     {formatIDR(totalTagihan)}
                   </span>
                 </div>
-                
+
                 <button
                   disabled={cart.length === 0 || processing}
                   onClick={() => setShowCheckoutModal(true)}
@@ -580,7 +569,7 @@ export default function Home() {
                       : 'bg-pink-500 text-white hover:bg-pink-600 shadow-pink-100'
                     }`}
                 >
-                  {processing ? 'Memproses...' : 'Selesai Transaksi'}
+                  {processing ? 'Memproses...' : 'Metode Pembayaran'}
                 </button>
               </div>
             </div>
@@ -591,7 +580,7 @@ export default function Home() {
       {/* MOBILE TRIGGER (ONLY IF CART) */}
       {cart.length > 0 && !showFullCart && (
         <div className="md:hidden fixed bottom-6 left-6 right-6 z-50 animate-fade-in">
-          <button 
+          <button
             onClick={() => setShowFullCart(true)}
             className="w-full bg-gray-900 text-white p-5 rounded-[2.5rem] shadow-2xl flex justify-between items-center ring-8 ring-white/80 active:scale-95 transition-transform"
           >
