@@ -114,7 +114,7 @@ export default function Laporan() {
       const sum = data?.reduce((acc, trx) => acc + trx.total_harga, 0) || 0
       const cash = data?.filter(t => t.payment_method === 'Tunai').reduce((acc, t) => acc + t.total_harga, 0) || 0
       const qris = data?.filter(t => t.payment_method !== 'Tunai').reduce((acc, t) => acc + t.total_harga, 0) || 0
-      
+
       setTotalHariIni(sum)
       setTotalCash(cash)
       setTotalQRIS(qris)
@@ -191,7 +191,7 @@ export default function Laporan() {
 
       // 3. Hapus transaksi (Hapus items dulu untuk menghindari error foreign key)
       await supabase.from('transaction_items').delete().eq('transaction_id', trx.id)
-      
+
       const { error: deleteErr } = await supabase.from('transactions').delete().eq('id', trx.id)
 
       if (deleteErr) throw deleteErr
@@ -334,8 +334,8 @@ export default function Laporan() {
 
         await supabase
           .from('daily_summary')
-          .update({ 
-            status: 'open', 
+          .update({
+            status: 'open',
             carry_over: currentSummary?.total_penjualan ?? 0,
             carry_modal: currentSummary?.total_modal ?? 0,
             carry_diskon: currentSummary?.total_diskon ?? 0,
@@ -460,7 +460,7 @@ export default function Laporan() {
         const fullTrx = trxList.find(t => t.id === item.transaction_id)
         const diskonTrx = fullTrx?.diskon || 0
         const metode = fullTrx?.payment_method || 'Tunai'
-        
+
         const totalKotorTrx = fullTrx.total_harga + diskonTrx
         const diskonProporsional = totalKotorTrx > 0 ? (item.subtotal / totalKotorTrx) * diskonTrx : 0
         const keuntunganBersihItem = item.subtotal - diskonProporsional - subModal
@@ -641,9 +641,9 @@ export default function Laporan() {
                           <button
                             onClick={() => handleVoidTransaction(trx)}
                             disabled={isClosed}
-                            className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-30 disabled:hover:bg-red-50 text-[10px] font-bold rounded-lg transition-colors uppercase tracking-widest"
+                            className="px-4 py-1.5 bg-red-500 text-white hover:bg-red-600 disabled:opacity-30 disabled:hover:bg-red-500 text-[10px] font-bold rounded-full transition-colors uppercase tracking-widest shadow-sm"
                           >
-                            Batal
+                            REFUND
                           </button>
                         </td>
                       </tr>
@@ -664,7 +664,7 @@ export default function Laporan() {
               <button
                 onClick={exportCSV}
                 disabled={history.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-bold rounded-xl hover:bg-green-700 transition-all active:scale-95 disabled:opacity-40 shadow-sm"
+                className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded-xl hover:bg-green-600 transition-all shadow-md shadow-green-100 flex items-center gap-2 disabled:opacity-50"
               >
                 ⬇ Export Riwayat
               </button>
