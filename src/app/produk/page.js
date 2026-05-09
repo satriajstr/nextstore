@@ -250,6 +250,8 @@ export default function Produk() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [sortByStock, setSortByStock] = useState('none')
+  const [filterCategory, setFilterCategory] = useState('Semua')
   const [modal, setModal] = useState(null) // { mode: 'add'|'edit', product?: {} }
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
@@ -338,13 +340,39 @@ export default function Produk() {
     }
   }
 
+  // ─── Helpers & Filter ────────────────────────────────────────────────────────
+  const formatIDR = (amount) => new Intl.NumberFormat('id-ID', {
+    style: 'currency', currency: 'IDR', minimumFractionDigits: 0
+  }).format(amount ?? 0)
+
+  const filtered = products
+    .filter(p => filterCategory === 'Semua' || p.category === filterCategory)
+    .filter(p => {
+      // Menggabungkan Nama + Kategori bolak-balik agar pola fuzzy bisa melompat bebas tanpa terhalang urutan ketik
+      const searchString = `${p.name} ${p.category || ''} ${p.category || ''} ${p.name}`.toLowerCase()
+      const pattern = search.toLowerCase().replace(/\s+/g, '')
+      
+      let patternIdx = 0
+      let strIdx = 0
+      while (patternIdx < pattern.length && strIdx < searchString.length) {
+        if (pattern[patternIdx] === searchString[strIdx]) patternIdx++
+        strIdx++
+      }
+      return patternIdx === pattern.length
+    })
+    .sort((a, b) => {
+      if (sortByStock === 'asc') return (a.stock || 0) - (b.stock || 0)
+      if (sortByStock === 'desc') return (b.stock || 0) - (a.stock || 0)
+      return 0
+    })
+
   // ─── EXPORT CSV ─────────────────────────────────────────────────────────────
   const exportProductsCSV = () => {
-    if (products.length === 0) return
+    if (filtered.length === 0) return
 
     try {
       const headers = ['Nama Produk', 'Kategori', 'Harga Modal', 'Harga Jual', 'Margin (Rp)', 'Margin (%)', 'Stok']
-      const rows = products.map(p => {
+      const rows = filtered.map(p => {
         const marginRp = p.harga_jual - p.harga_modal
         const marginPct = p.harga_modal > 0 ? ((marginRp / p.harga_modal) * 100).toFixed(2) : 0
         return [
@@ -373,16 +401,6 @@ export default function Produk() {
       showToast('Gagal mengekspor data produk.', 'error')
     }
   }
-
-  // ─── Helpers ─────────────────────────────────────────────────────────────────
-  const formatIDR = (amount) => new Intl.NumberFormat('id-ID', {
-    style: 'currency', currency: 'IDR', minimumFractionDigits: 0
-  }).format(amount ?? 0)
-
-  const filtered = products.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    (p.category && p.category.toLowerCase().includes(search.toLowerCase()))
-  )
 
   const handleSave = modal?.mode === 'add' ? handleAdd : handleEdit
 
@@ -414,18 +432,37 @@ export default function Produk() {
                 ← Kembali ke Kasir
               </Link>
               <h1 className="text-3xl font-bold text-pink-500 tracking-tighter">Manajemen Produk</h1>
-              <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mt-1">{products.length} produk terdaftar</p>
+              <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mt-1">{filtered.length} produk ditampilkan</p>
             </div>
-            <div className="flex gap-3 items-start">
+            <div className="flex gap-2 items-start flex-wrap md:flex-nowrap">
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                className="px-3 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-xs text-gray-700 bg-white transition-all shadow-sm font-bold cursor-pointer outline-none max-w-[140px] truncate"
+              >
+                <option value="Semua">Semua Kategori</option>
+                {uniqueCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+              <select
+                value={sortByStock}
+                onChange={(e) => setSortByStock(e.target.value)}
+                className="px-3 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-xs text-gray-700 bg-white transition-all shadow-sm font-bold cursor-pointer outline-none"
+              >
+                <option value="none">Stok: Default</option>
+                <option value="asc">Stok: Terkecil</option>
+                <option value="desc">Stok: Terbesar</option>
+              </select>
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Cari nama atau kategori..."
-                className="px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-sm text-gray-700 bg-white w-48 md:w-64 transition-all shadow-sm font-medium"
+                className="px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-sm text-gray-700 bg-white w-40 md:w-56 transition-all shadow-sm font-medium"
               />
               <button
                 onClick={() => setModal({ mode: 'add' })}
-                className="px-5 py-2.5 bg-pink-500 text-white font-bold rounded-xl hover:bg-pink-600 transition-all active:scale-95 shadow-lg shadow-pink-100 text-sm whitespace-nowrap"
+                className="px-4 py-2.5 bg-pink-500 text-white font-bold rounded-xl hover:bg-pink-600 transition-all active:scale-95 shadow-lg shadow-pink-100 text-sm whitespace-nowrap"
               >
                 ＋ Tambah
               </button>
@@ -435,10 +472,10 @@ export default function Produk() {
           {/* SUMMARY STATS */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 pt-4">
             {[
-              { label: 'Total Produk', value: products.length, icon: '📦' },
-              { label: 'Stok Kritis (≤3)', value: products.filter(p => (p.stock ?? 0) <= 3).length, icon: '⚠️' },
-              { label: 'Avg. Margin', value: products.length ? `${(products.reduce((a, p) => a + (p.harga_jual - p.harga_modal) / (p.harga_modal || 1) * 100, 0) / products.length).toFixed(1)}%` : '0%', icon: '📈' },
-              { label: 'Total Nilai Stok', value: formatIDR(products.reduce((a, p) => a + (p.harga_modal * (p.stock ?? 0)), 0)), icon: '💰' },
+              { label: 'Total Produk', value: filtered.length, icon: '📦' },
+              { label: 'Stok Kritis (≤3)', value: filtered.filter(p => (p.stock ?? 0) <= 3).length, icon: '⚠️' },
+              { label: 'Avg. Margin', value: filtered.length ? `${(filtered.reduce((a, p) => a + (p.harga_jual - p.harga_modal) / (p.harga_modal || 1) * 100, 0) / filtered.length).toFixed(1)}%` : '0%', icon: '📈' },
+              { label: 'Total Nilai Stok', value: formatIDR(filtered.reduce((a, p) => a + (p.harga_modal * (p.stock ?? 0)), 0)), icon: '💰' },
             ].map((stat) => (
               <div key={stat.label} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm transition-all hover:shadow-md">
                 <p className="text-2xl mb-2">{stat.icon}</p>
