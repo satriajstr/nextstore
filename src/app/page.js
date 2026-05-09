@@ -197,9 +197,20 @@ export default function Home() {
     }
   }
 
-  // Filter Logic
+  // Filter Logic (Fuzzy Search & Kategori)
   const filteredProducts = products.filter(p => {
-    const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase())
+    // Menggabungkan Nama + Kategori bolak-balik agar pola fuzzy bisa melompat bebas
+    const searchString = `${p.name} ${p.category || ''} ${p.category || ''} ${p.name}`.toLowerCase()
+    const pattern = searchTerm.toLowerCase().replace(/\s+/g, '')
+    
+    let patternIdx = 0
+    let strIdx = 0
+    while (patternIdx < pattern.length && strIdx < searchString.length) {
+      if (pattern[patternIdx] === searchString[strIdx]) patternIdx++
+      strIdx++
+    }
+    const matchSearch = patternIdx === pattern.length
+
     const matchCategory = selectedCategory === 'Semua' || p.category === selectedCategory
     return matchSearch && matchCategory
   })
