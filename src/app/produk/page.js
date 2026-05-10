@@ -348,22 +348,41 @@ export default function Produk() {
   const filtered = products
     .filter(p => filterCategory === 'Semua' || p.category === filterCategory)
     .filter(p => {
-      // Menggabungkan Nama + Kategori bolak-balik agar pola fuzzy bisa melompat bebas tanpa terhalang urutan ketik
-      const searchString = `${p.name} ${p.category || ''} ${p.category || ''} ${p.name}`.toLowerCase()
-      const pattern = search.toLowerCase().replace(/\s+/g, '')
+      const searchTerms = search.toLowerCase().split(/\s+/).filter(Boolean)
+      if (searchTerms.length === 0) return true
       
-      let patternIdx = 0
-      let strIdx = 0
-      while (patternIdx < pattern.length && strIdx < searchString.length) {
-        if (pattern[patternIdx] === searchString[strIdx]) patternIdx++
-        strIdx++
-      }
-      return patternIdx === pattern.length
+      const searchString = `${p.name} ${p.category || ''}`.toLowerCase()
+      return searchTerms.every(term => searchString.includes(term))
     })
     .sort((a, b) => {
+      const term = search.toLowerCase().trim()
+      let scoreDiff = 0
+      
+      if (term) {
+        const getScore = (p) => {
+          let score = 0
+          const name = p.name.toLowerCase()
+          const cat = (p.category || '').toLowerCase()
+          
+          if (name === term) score += 100
+          else if (name.startsWith(term)) score += 50
+          else if (name.includes(` ${term} `) || name.endsWith(` ${term}`)) score += 30
+          else if (name.includes(term)) score += 10
+          
+          if (cat === term) score += 20
+          else if (cat.includes(term)) score += 5
+          
+          return score
+        }
+        scoreDiff = getScore(b) - getScore(a)
+      }
+      
+      if (scoreDiff !== 0) return scoreDiff // Urutkan berdasarkan relevansi pencarian dulu
+      
       if (sortByStock === 'asc') return (a.stock || 0) - (b.stock || 0)
       if (sortByStock === 'desc') return (b.stock || 0) - (a.stock || 0)
-      return 0
+      
+      return a.name.localeCompare(b.name) // Default abjad
     })
 
   // ─── EXPORT CSV ─────────────────────────────────────────────────────────────
