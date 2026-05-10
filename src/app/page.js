@@ -37,10 +37,6 @@ export default function Home() {
 
   // Swipe & Animation Management
   const touchStart = useRef(0)
-  const touchEnd = useRef(0)
-  const categoryScrollRef = useRef(null)
-  const [swipeDirection, setSwipeDirection] = useState('') // 'left' or 'right'
-
   // Checkout Modal States
   const [showCheckoutModal, setShowCheckoutModal] = useState(false)
   const [amountReceived, setAmountReceived] = useState('')
@@ -125,7 +121,7 @@ export default function Home() {
   const [voucher, setVoucher] = useState(0)
 
   const totalTagihan = Math.max(0, totalHarga - voucher)
-  const VOUCHER_OPTIONS = [1000, 2000, 3000, 4000, 5000]
+  const VOUCHER_OPTIONS = [500, 1000, 2000, 3000, 4000, 5000]
 
   const kembalian = Math.max(0, (parseInt(amountReceived) || 0) - totalTagihan)
 
@@ -197,68 +193,52 @@ export default function Home() {
     }
   }
 
-  // Filter Logic (Fuzzy Search & Kategori)
+  // Filter & Sort Logic (Strict Keyword Match & Relevance Scoring)
   const filteredProducts = products.filter(p => {
-    // Menggabungkan Nama + Kategori bolak-balik agar pola fuzzy bisa melompat bebas
-    const searchString = `${p.name} ${p.category || ''} ${p.category || ''} ${p.name}`.toLowerCase()
-    const pattern = searchTerm.toLowerCase().replace(/\s+/g, '')
-    
-    let patternIdx = 0
-    let strIdx = 0
-    while (patternIdx < pattern.length && strIdx < searchString.length) {
-      if (pattern[patternIdx] === searchString[strIdx]) patternIdx++
-      strIdx++
-    }
-    const matchSearch = patternIdx === pattern.length
-
+    // 1. Filter Kategori
     const matchCategory = selectedCategory === 'Semua' || p.category === selectedCategory
-    return matchSearch && matchCategory
+    if (!matchCategory) return false
+
+    // 2. Filter Keyword (Semua kata yang diketik harus ada di nama/kategori)
+    const searchTerms = searchTerm.toLowerCase().split(/\s+/).filter(Boolean)
+    if (searchTerms.length === 0) return true
+
+    const searchString = `${p.name} ${p.category || ''}`.toLowerCase()
+    return searchTerms.every(term => searchString.includes(term))
+  }).sort((a, b) => {
+    const term = searchTerm.toLowerCase().trim()
+    if (!term) return 0
+
+    // Fungsi Pemberian Nilai (Scoring) agar yang paling cocok naik ke atas
+    const getScore = (p) => {
+      let score = 0
+      const name = p.name.toLowerCase()
+      const cat = (p.category || '').toLowerCase()
+
+      if (name === term) score += 100 // Cocok persis
+      else if (name.startsWith(term)) score += 50 // Berawalan kata tersebut
+      else if (name.includes(` ${term} `) || name.endsWith(` ${term}`)) score += 30 // Kata terpisah utuh
+      else if (name.includes(term)) score += 10 // Bagian dari kata lain
+
+      if (cat === term) score += 20
+      else if (cat.includes(term)) score += 5
+
+      return score
+    }
+
+    const scoreA = getScore(a)
+    const scoreB = getScore(b)
+
+    if (scoreA === scoreB) {
+      return a.name.localeCompare(b.name)
+    }
+    return scoreB - scoreA
   })
 
   // Extract Categories
   const categoriesList = ['Semua', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))]
 
-  // Swipe Logic Implementation
-  const handleTouchStart = (e) => {
-    touchStart.current = e.targetTouches[0].clientX
-  }
 
-  const handleTouchMove = (e) => {
-    touchEnd.current = e.targetTouches[0].clientX
-  }
-
-  const handleTouchEnd = () => {
-    const minSwipeDistance = 70
-    const distance = touchStart.current - touchEnd.current
-    const isLeftSwipe = distance > minSwipeDistance
-    const isRightSwipe = distance < -minSwipeDistance
-
-    if (isLeftSwipe || isRightSwipe) {
-      const currentIndex = categoriesList.indexOf(selectedCategory)
-      let nextIndex = currentIndex
-
-      if (isLeftSwipe && currentIndex < categoriesList.length - 1) {
-        nextIndex = currentIndex + 1
-        setSwipeDirection('right') // Content moves from right
-      } else if (isRightSwipe && currentIndex > 0) {
-        nextIndex = currentIndex - 1
-        setSwipeDirection('left') // Content moves from left
-      }
-
-      if (nextIndex !== currentIndex) {
-        setSelectedCategory(categoriesList[nextIndex])
-
-        // Reset direction after animation
-        setTimeout(() => setSwipeDirection(''), 400)
-
-        // Auto-scroll the category tab into view
-        const tabElement = document.getElementById(`cat-tab-${nextIndex}`)
-        if (tabElement) {
-          tabElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
-        }
-      }
-    }
-  }
 
   return (
     <>
@@ -345,16 +325,13 @@ export default function Home() {
         {/* LEFT SIDE: PRODUCT LIST */}
         <section
           className="w-full md:w-3/5 border-r border-gray-200"
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
         >
 
           <div className="sticky top-0 z-40 bg-white/70 backdrop-blur-md p-4 md:p-8 border-b border-gray-100/50">
             <header className="flex flex-col gap-6">
               <div className="flex justify-between items-start">
                 <div>
-                  <h1 className="text-3xl font-bold text-pink-500 tracking-tight">Derashop</h1>
+                  <h1 className="text-3xl font-bold text-pink-500 tracking-tight">Derastore</h1>
                   <p className="text-gray-400 text-sm mt-1">Online SmartCashier</p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -378,36 +355,10 @@ export default function Home() {
                 />
               </div>
 
-              {/* CATEGORY TABS */}
-              {categoriesList.length > 1 && (
-                <div
-                  ref={categoryScrollRef}
-                  className="flex gap-2 overflow-x-auto pb-1 no-scrollbar -mx-1 px-1"
-                >
-                  {categoriesList.map((cat, idx) => (
-                    <button
-                      key={cat}
-                      id={`cat-tab-${idx}`}
-                      onClick={() => {
-                        const currentIndex = categoriesList.indexOf(selectedCategory)
-                        setSwipeDirection(idx > currentIndex ? 'right' : 'left')
-                        setSelectedCategory(cat)
-                        setTimeout(() => setSwipeDirection(''), 400)
-                      }}
-                      className={`px-5 py-2 rounded-full text-xs font-semibold whitespace-nowrap border transition-all
-                        ${selectedCategory === cat
-                          ? 'bg-pink-500 text-white border-pink-500 shadow-md shadow-pink-100 scale-105'
-                          : 'bg-white/40 backdrop-blur-sm text-gray-400 border-gray-200 hover:border-pink-200 active:scale-95'}`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-              )}
             </header>
           </div>
 
-          <div className={`px-4 md:px-8 pb-24 md:pb-8 pt-4 transition-all duration-300 ${swipeDirection === 'right' ? 'animate-slide-right' : swipeDirection === 'left' ? 'animate-slide-left' : ''}`}>
+          <div className="px-4 md:px-8 pb-24 md:pb-8 pt-4 transition-all duration-300">
             {loading ? (
               <div className="flex justify-center items-center h-64">
                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-pink-400"></div>
@@ -449,7 +400,7 @@ export default function Home() {
 
         {/* RIGHT SIDE: CART */}
         <section className={`
-          fixed inset-0 z-[60] bg-white flex flex-col transition-all duration-300 md:static md:z-auto md:w-2/5 md:bg-white md:shadow-none md:translate-y-0
+          fixed inset-0 z-[60] bg-white flex flex-col transition-all duration-300 md:sticky md:top-0 md:h-screen md:z-auto md:w-2/5 md:bg-white md:shadow-none md:translate-y-0
           ${showFullCart ? 'translate-y-0' : 'translate-y-full md:translate-y-0'}
         `}>
 
@@ -537,7 +488,7 @@ export default function Home() {
                           ? 'bg-amber-100 text-amber-700 border-amber-300 shadow-sm scale-105'
                           : 'bg-white/60 text-amber-400 border-amber-100 hover:border-amber-200 hover:text-amber-500'}`}
                     >
-                      -{(v / 1000).toFixed(0)}rb
+                      -{v >= 1000 ? `${(v / 1000).toFixed(0)}rb` : v}
                     </button>
                   ))}
                 </div>
