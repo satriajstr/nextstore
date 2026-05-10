@@ -282,7 +282,7 @@ export default function Home() {
 
             {/* Payment Method */}
             <div className="flex gap-2 p-1 bg-gray-50 rounded-2xl border border-gray-100">
-              {['Tunai', 'QRIS', 'Transfer'].map(m => (
+              {['Tunai', 'QRIS'].map(m => (
                 <button
                   key={m}
                   onClick={() => setPaymentMethod(m)}
@@ -298,17 +298,10 @@ export default function Home() {
               <div className="space-y-4">
                 {/* Input Received */}
                 <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2 px-1">Uang Diterima (Rp)</label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">Rp</span>
-                    <input
-                      type="number"
-                      autoFocus
-                      value={amountReceived}
-                      onChange={(e) => setAmountReceived(e.target.value)}
-                      placeholder="Ketik jumlah uang..."
-                      className="w-full pl-11 pr-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl text-xl font-bold text-gray-800 focus:outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100/30 transition-all"
-                    />
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2 px-1">Uang Diterima</label>
+                  <div className="w-full px-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl text-2xl font-bold text-gray-800 flex items-center justify-between">
+                    <span className="text-gray-400 text-sm font-bold">Rp</span>
+                    <span>{amountReceived ? parseInt(amountReceived).toLocaleString('id-ID') : '0'}</span>
                   </div>
                 </div>
 
