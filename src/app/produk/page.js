@@ -211,17 +211,7 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
             />
           </div>
 
-          {/* Margin Preview */}
-          {form.harga_modal > 0 && form.harga_jual > 0 && (
-            <div className={`rounded-xl px-4 py-3 text-xs font-semibold flex justify-between
-              ${form.harga_jual >= form.harga_modal ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
-              <span>Margin</span>
-              <span>
-                +Rp {(parseInt(form.harga_jual) - parseInt(form.harga_modal)).toLocaleString('id-ID')}
-                {' '}({form.harga_modal > 0 ? (((form.harga_jual - form.harga_modal) / form.harga_modal) * 100).toFixed(1) : 0}%)
-              </span>
-            </div>
-          )}
+
 
           <div className="flex gap-3 pt-4">
             <button
@@ -371,17 +361,13 @@ export default function Produk() {
     if (filtered.length === 0) return
 
     try {
-      const headers = ['Nama Produk', 'Kategori', 'Harga Modal', 'Harga Jual', 'Margin (Rp)', 'Margin (%)', 'Stok']
+      const headers = ['Nama Produk', 'Kategori', 'Harga Modal', 'Harga Jual', 'Stok']
       const rows = filtered.map(p => {
-        const marginRp = p.harga_jual - p.harga_modal
-        const marginPct = p.harga_modal > 0 ? ((marginRp / p.harga_modal) * 100).toFixed(2) : 0
         return [
           `"${p.name}"`,
           `"${p.category || 'Umum'}"`,
           p.harga_modal,
           p.harga_jual,
-          marginRp,
-          `${marginPct}%`,
           p.stock || 0
         ]
       })
@@ -474,7 +460,6 @@ export default function Produk() {
             {[
               { label: 'Total Produk', value: filtered.length, icon: '📦' },
               { label: 'Stok Kritis (≤3)', value: filtered.filter(p => (p.stock ?? 0) <= 3).length, icon: '⚠️' },
-              { label: 'Avg. Margin', value: filtered.length ? `${(filtered.reduce((a, p) => a + (p.harga_jual - p.harga_modal) / (p.harga_modal || 1) * 100, 0) / filtered.length).toFixed(1)}%` : '0%', icon: '📈' },
               { label: 'Total Nilai Stok', value: formatIDR(filtered.reduce((a, p) => a + (p.harga_modal * (p.stock ?? 0)), 0)), icon: '💰' },
             ].map((stat) => (
               <div key={stat.label} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm transition-all hover:shadow-md">
@@ -516,16 +501,13 @@ export default function Produk() {
                       <th className="px-6 py-5">Produk & Kategori</th>
                       <th className="px-6 py-5 text-right">Harga Modal</th>
                       <th className="px-6 py-5 text-right">Harga Jual</th>
-                      <th className="px-6 py-5 text-right">Margin</th>
                       <th className="px-6 py-5 text-center">Stok</th>
                       <th className="px-6 py-5 text-center">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {filtered.map((product) => {
-                      const margin = product.harga_modal > 0
-                        ? ((product.harga_jual - product.harga_modal) / product.harga_modal * 100).toFixed(1)
-                        : 0
+
                       const isLowStock = (product.stock ?? 0) <= 3
                       return (
                         <tr key={product.id} className="hover:bg-gray-50/70 transition-colors group">
@@ -541,12 +523,7 @@ export default function Produk() {
                           <td className="px-6 py-5 text-right font-bold text-pink-500 text-sm">
                             {formatIDR(product.harga_jual)}
                           </td>
-                          <td className="px-6 py-5 text-right">
-                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-tighter
-                              ${margin >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                              {margin >= 0 ? '+' : ''}{margin}%
-                            </span>
-                          </td>
+
                           <td className="px-6 py-5 text-center">
                             <span className={`text-sm font-semibold px-3 py-1 rounded-lg
                               ${isLowStock ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>
