@@ -281,17 +281,30 @@ export default function Home() {
                   <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2 px-1">Uang Diterima</label>
                   <div className="w-full px-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl text-2xl font-bold text-gray-800 flex items-center justify-between">
                     <span className="text-gray-400 text-sm font-bold">Rp</span>
-                    <span>{amountReceived ? parseInt(amountReceived).toLocaleString('id-ID') : '0'}</span>
+                    <span className="tabular-nums">{amountReceived ? parseInt(amountReceived).toLocaleString('id-ID') : '0'}</span>
                   </div>
                 </div>
 
                 {/* Quick Cash Buttons */}
                 <div className="grid grid-cols-3 gap-2">
-                  <button onClick={() => setAmountReceived(totalTagihan.toString())} className="py-3 bg-white border border-gray-100 rounded-xl text-[10px] font-bold text-gray-600 hover:border-pink-200 transition-all">UANG PAS</button>
-                  <button onClick={() => setAmountReceived('10000')} className="py-3 bg-white border border-gray-100 rounded-xl text-[10px] font-bold text-gray-600 hover:border-pink-200 transition-all">10.000</button>
-                  <button onClick={() => setAmountReceived('20000')} className="py-3 bg-white border border-gray-100 rounded-xl text-[10px] font-bold text-gray-600 hover:border-pink-200 transition-all">20.000</button>
-                  <button onClick={() => setAmountReceived('50000')} className="py-3 bg-white border border-gray-100 rounded-xl text-[10px] font-bold text-gray-600 hover:border-pink-200 transition-all">50.000</button>
-                  <button onClick={() => setAmountReceived('100000')} className="py-3 bg-white border border-gray-100 rounded-xl text-[10px] font-bold text-gray-600 hover:border-pink-200 transition-all">100.000</button>
+                  {[
+                    { label: 'UANG PAS', value: totalTagihan.toString() },
+                    { label: '10.000', value: '10000' },
+                    { label: '20.000', value: '20000' },
+                    { label: '50.000', value: '50000' },
+                    { label: '100.000', value: '100000' }
+                  ].map((btn) => (
+                    <button
+                      key={btn.label}
+                      onClick={() => setAmountReceived(btn.value)}
+                      className={`py-3 rounded-xl text-[10px] font-bold transition-colors duration-75 active:scale-95 border shadow-sm
+                        ${amountReceived === btn.value
+                          ? 'bg-pink-500 text-white border-pink-500 ring-2 ring-pink-100'
+                          : 'bg-white text-gray-600 border-gray-100 active:bg-gray-50'}`}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
                 </div>
 
                 {/* Change Result */}
