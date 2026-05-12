@@ -91,7 +91,7 @@ export default function Kustomisasi() {
 
           {/* Header */}
           <header className="mb-10">
-            <h1 className="text-3xl font-black tracking-tighter" style={{ color: activeColor }}>
+            <h1 className="text-3xl font-bold text-pink-500 tracking-tighter" style={{ color: activeColor }}>
               Kustomisasi Toko
             </h1>
             <p className="text-gray-400 text-sm mt-1">Sesuaikan tampilan dan identitas toko Anda</p>
@@ -171,11 +171,10 @@ export default function Kustomisasi() {
                       key={preset.value}
                       onClick={() => { setSelectedColor(preset.value); setCustomColor(preset.value) }}
                       title={preset.name}
-                      className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border-2 transition-all group ${
-                        selectedColor === preset.value
+                      className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border-2 transition-all group ${selectedColor === preset.value
                           ? 'border-gray-800 scale-105'
                           : 'border-transparent hover:border-gray-200'
-                      }`}
+                        }`}
                     >
                       <div
                         className="w-10 h-10 rounded-xl shadow-sm flex items-center justify-center text-lg"
