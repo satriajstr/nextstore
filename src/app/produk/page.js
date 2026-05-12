@@ -3,6 +3,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
+import { getRole } from '../../lib/auth'
+import { useRouter } from 'next/navigation'
+import AdminSidebar from '../../components/AdminSidebar'
 
 // ─── Toast Component ──────────────────────────────────────────────────────────
 function Toast({ toast, onClose }) {
@@ -237,6 +240,34 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Produk() {
+  const router = useRouter()
+  const [role, setRole] = useState(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.replace('/login')
+        return
+      }
+      const userRole = await getRole()
+      if (userRole === 'kasir') {
+        // Kasir tidak punya akses ke halaman ini
+        router.replace('/')
+        return
+      }
+      if (userRole !== 'admin') {
+        // Role null atau tidak dikenali → paksa logout ke login
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
+      setRole(userRole)
+      setCheckingAuth(false)
+    }
+    checkAuth()
+  }, [router])
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -340,38 +371,38 @@ export default function Produk() {
     .filter(p => {
       const searchTerms = search.toLowerCase().split(/\s+/).filter(Boolean)
       if (searchTerms.length === 0) return true
-      
+
       const searchString = `${p.name} ${p.category || ''}`.toLowerCase()
       return searchTerms.every(term => searchString.includes(term))
     })
     .sort((a, b) => {
       const term = search.toLowerCase().trim()
       let scoreDiff = 0
-      
+
       if (term) {
         const getScore = (p) => {
           let score = 0
           const name = p.name.toLowerCase()
           const cat = (p.category || '').toLowerCase()
-          
+
           if (name === term) score += 100
           else if (name.startsWith(term)) score += 50
           else if (name.includes(` ${term} `) || name.endsWith(` ${term}`)) score += 30
           else if (name.includes(term)) score += 10
-          
+
           if (cat === term) score += 20
           else if (cat.includes(term)) score += 5
-          
+
           return score
         }
         scoreDiff = getScore(b) - getScore(a)
       }
-      
+
       if (scoreDiff !== 0) return scoreDiff // Urutkan berdasarkan relevansi pencarian dulu
-      
+
       if (sortByStock === 'asc') return (a.stock || 0) - (b.stock || 0)
       if (sortByStock === 'desc') return (b.stock || 0) - (a.stock || 0)
-      
+
       return a.name.localeCompare(b.name) // Default abjad
     })
 
@@ -415,6 +446,11 @@ export default function Produk() {
   return (
     <>
       <Toast toast={toast} onClose={() => setToast(null)} />
+      {checkingAuth && (
+        <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500"></div>
+        </div>
+      )}
       <ConfirmDialog confirm={confirmState} onYes={handleConfirmYes} onNo={handleConfirmNo} />
       {modal && (
         <ProductModal
@@ -427,15 +463,14 @@ export default function Produk() {
         />
       )}
 
-      <main className="min-h-screen bg-gray-50 text-gray-900 font-sans p-4 md:p-8">
-        <div className="max-w-5xl mx-auto">
+      <main className="flex min-h-screen bg-gray-50 text-gray-900 font-sans">
+        <AdminSidebar />
+        <div className="flex-1 pt-16 md:pt-0 overflow-x-hidden">
+        <div className="max-w-5xl mx-auto p-4 md:p-8">
 
           {/* HEADER (STICKY WITH GLASSMORPHISM) */}
           <header className="sticky top-0 z-40 bg-gray-50/70 backdrop-blur-md -mx-4 md:-mx-8 px-4 md:px-8 py-6 mb-4 flex flex-col md:flex-row justify-between gap-4 border-b border-gray-200/50">
             <div>
-              <Link href="/" className="text-pink-500 hover:underline text-[10px] mb-2 inline-block font-bold uppercase tracking-widest">
-                ← Kembali ke Kasir
-              </Link>
               <h1 className="text-3xl font-bold text-pink-500 tracking-tighter">Manajemen Produk</h1>
               <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mt-1">{filtered.length} produk ditampilkan</p>
             </div>
@@ -573,6 +608,7 @@ export default function Produk() {
               )}
             </div>
           </section>
+        </div>
         </div>
       </main>
     </>

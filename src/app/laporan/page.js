@@ -3,6 +3,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
+import { getRole } from '../../lib/auth'
+import { useRouter } from 'next/navigation'
+import AdminSidebar from '../../components/AdminSidebar'
 
 // ─── Custom Toast Component ──────────────────────────────────────────────────
 function Toast({ toast, onClose }) {
@@ -57,6 +60,34 @@ function ConfirmDialog({ confirm, onYes, onNo }) {
 }
 
 export default function Laporan() {
+  const router = useRouter()
+  const [role, setRole] = useState(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.replace('/login')
+        return
+      }
+      const userRole = await getRole()
+      if (userRole === 'kasir') {
+        // Kasir tidak punya akses ke halaman ini
+        router.replace('/')
+        return
+      }
+      if (userRole !== 'admin') {
+        // Role null atau tidak dikenali → paksa logout ke login
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
+      setRole(userRole)
+      setCheckingAuth(false)
+    }
+    checkAuth()
+  }, [router])
   const [transactions, setTransactions] = useState([])
   const [totalHariIni, setTotalHariIni] = useState(0)
   const [totalCash, setTotalCash] = useState(0)
@@ -501,17 +532,21 @@ export default function Laporan() {
   return (
     <>
       <Toast toast={toast} onClose={() => setToast(null)} />
+      {checkingAuth && (
+        <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500"></div>
+        </div>
+      )}
       <ConfirmDialog confirm={confirmState} onYes={handleConfirmYes} onNo={handleConfirmNo} />
 
-      <main className="min-h-screen bg-gray-50 text-gray-900 font-sans p-4 md:p-8">
-        <div className="max-w-4xl mx-auto">
+      <main className="flex min-h-screen bg-gray-50 text-gray-900 font-sans">
+        <AdminSidebar />
+        <div className="flex-1 pt-16 md:pt-0 overflow-x-hidden">
+        <div className="max-w-4xl mx-auto p-4 md:p-8">
 
           {/* HEADER */}
           <header className="flex justify-between items-center mb-8">
             <div>
-              <Link href="/" className="text-pink-500 hover:underline text-sm mb-2 inline-block">
-                ← Kembali ke Kasir
-              </Link>
               <h1 className="text-3xl font-black text-pink-500 tracking-tighter">Laporan Harian</h1>
               <p className="text-gray-500 text-sm">Rekap penjualan Anda hari ini</p>
             </div>
@@ -705,6 +740,7 @@ export default function Laporan() {
               )}
             </div>
           </section>
+        </div>
         </div>
       </main>
     </>

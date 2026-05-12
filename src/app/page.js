@@ -3,6 +3,9 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import Link from 'next/link'
+import { getRole, signOut } from '../lib/auth'
+import { useRouter } from 'next/navigation'
+import { useTheme } from '../lib/ThemeContext'
 
 // ─── Toast Component ──────────────────────────────────────────────────────────
 function Toast({ toast, onClose }) {
@@ -26,7 +29,36 @@ function Toast({ toast, onClose }) {
 }
 
 export default function Home() {
+  const router = useRouter()
+  const [role, setRole] = useState(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
 
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.replace('/login')
+        return
+      }
+      const userRole = await getRole()
+      if (userRole === 'admin') {
+        // Admin tidak punya akses ke halaman kasir
+        router.replace('/produk')
+        return
+      }
+      if (userRole !== 'kasir') {
+        // Role null atau tidak dikenali → paksa logout ke login
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
+      setRole(userRole)
+      setCheckingAuth(false)
+    }
+    checkAuth()
+  }, [router])
+
+  const { storeName, primaryColor } = useTheme()
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState([])
   const [loading, setLoading] = useState(true)
@@ -242,8 +274,12 @@ export default function Home() {
 
   return (
     <>
-
       <Toast toast={toast} onClose={() => setToast(null)} />
+      {checkingAuth && (
+        <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500"></div>
+        </div>
+      )}
 
       {/* CHECKOUT MODAL (SMART CALCULATOR) */}
       {showCheckoutModal && (
@@ -344,16 +380,19 @@ export default function Home() {
             <header className="flex flex-col gap-6">
               <div className="flex justify-between items-start">
                 <div>
-                  <h1 className="text-3xl font-bold text-pink-500 tracking-tight">Derastore</h1>
+                  <h1 className="text-3xl font-black tracking-tight" style={{ color: primaryColor }}>{storeName}</h1>
                   <p className="text-gray-400 text-sm mt-1">Online SmartCashier</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Link href="/produk" className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-200 transition-all shadow-sm border border-gray-200/50">
-                    📦 <span className="hidden sm:inline font-bold">Produk</span>
-                  </Link>
-                  <Link href="/laporan" className="flex items-center gap-2 px-4 py-2.5 bg-pink-50 text-pink-500 rounded-xl font-semibold text-sm hover:bg-pink-100 transition-all shadow-sm border border-pink-100/50">
-                    📊 <span className="hidden sm:inline font-bold">Laporan</span>
-                  </Link>
+                  <button
+                    onClick={signOut}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-500 rounded-xl font-bold text-xs hover:bg-red-100 transition-all shadow-sm border border-red-100/50 uppercase tracking-widest group"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+                    </svg>
+                    <span className="hidden sm:inline">Logout</span>
+                  </button>
                 </div>
               </div>
 
