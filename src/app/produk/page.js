@@ -3,6 +3,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
+import { getRole } from '../../lib/auth'
+import { useRouter } from 'next/navigation'
+import AdminSidebar from '../../components/AdminSidebar'
 
 // ─── Toast Component ──────────────────────────────────────────────────────────
 function Toast({ toast, onClose }) {
@@ -237,6 +240,34 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Produk() {
+  const router = useRouter()
+  const [role, setRole] = useState(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.replace('/login')
+        return
+      }
+      const userRole = await getRole()
+      if (userRole === 'kasir') {
+        // Kasir tidak punya akses ke halaman ini
+        router.replace('/')
+        return
+      }
+      if (userRole !== 'admin') {
+        // Role null atau tidak dikenali → paksa logout ke login
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
+      setRole(userRole)
+      setCheckingAuth(false)
+    }
+    checkAuth()
+  }, [router])
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -340,38 +371,38 @@ export default function Produk() {
     .filter(p => {
       const searchTerms = search.toLowerCase().split(/\s+/).filter(Boolean)
       if (searchTerms.length === 0) return true
-      
+
       const searchString = `${p.name} ${p.category || ''}`.toLowerCase()
       return searchTerms.every(term => searchString.includes(term))
     })
     .sort((a, b) => {
       const term = search.toLowerCase().trim()
       let scoreDiff = 0
-      
+
       if (term) {
         const getScore = (p) => {
           let score = 0
           const name = p.name.toLowerCase()
           const cat = (p.category || '').toLowerCase()
-          
+
           if (name === term) score += 100
           else if (name.startsWith(term)) score += 50
           else if (name.includes(` ${term} `) || name.endsWith(` ${term}`)) score += 30
           else if (name.includes(term)) score += 10
-          
+
           if (cat === term) score += 20
           else if (cat.includes(term)) score += 5
-          
+
           return score
         }
         scoreDiff = getScore(b) - getScore(a)
       }
-      
+
       if (scoreDiff !== 0) return scoreDiff // Urutkan berdasarkan relevansi pencarian dulu
-      
+
       if (sortByStock === 'asc') return (a.stock || 0) - (b.stock || 0)
       if (sortByStock === 'desc') return (b.stock || 0) - (a.stock || 0)
-      
+
       return a.name.localeCompare(b.name) // Default abjad
     })
 
@@ -415,6 +446,11 @@ export default function Produk() {
   return (
     <>
       <Toast toast={toast} onClose={() => setToast(null)} />
+      {checkingAuth && (
+        <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500"></div>
+        </div>
+      )}
       <ConfirmDialog confirm={confirmState} onYes={handleConfirmYes} onNo={handleConfirmNo} />
       {modal && (
         <ProductModal
@@ -427,152 +463,152 @@ export default function Produk() {
         />
       )}
 
-      <main className="min-h-screen bg-gray-50 text-gray-900 font-sans p-4 md:p-8">
-        <div className="max-w-5xl mx-auto">
+      <main className="flex min-h-screen bg-gray-50 text-gray-900 font-sans">
+        <AdminSidebar />
+        <div className="flex-1 pt-16 md:pt-0 overflow-x-hidden">
+          <div className="max-w-5xl mx-auto p-4 md:p-8">
 
-          {/* HEADER (STICKY WITH GLASSMORPHISM) */}
-          <header className="sticky top-0 z-40 bg-gray-50/70 backdrop-blur-md -mx-4 md:-mx-8 px-4 md:px-8 py-6 mb-4 flex flex-col md:flex-row justify-between gap-4 border-b border-gray-200/50">
-            <div>
-              <Link href="/" className="text-pink-500 hover:underline text-[10px] mb-2 inline-block font-bold uppercase tracking-widest">
-                ← Kembali ke Kasir
-              </Link>
-              <h1 className="text-3xl font-bold text-pink-500 tracking-tighter">Manajemen Produk</h1>
-              <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mt-1">{filtered.length} produk ditampilkan</p>
-            </div>
-            <div className="flex gap-2 items-start flex-wrap md:flex-nowrap">
-              <select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-                className="px-3 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-xs text-gray-700 bg-white transition-all shadow-sm font-bold cursor-pointer outline-none max-w-[140px] truncate"
-              >
-                <option value="Semua">Semua Kategori</option>
-                {uniqueCategories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-              <select
-                value={sortByStock}
-                onChange={(e) => setSortByStock(e.target.value)}
-                className="px-3 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-xs text-gray-700 bg-white transition-all shadow-sm font-bold cursor-pointer outline-none"
-              >
-                <option value="none">Stok: Default</option>
-                <option value="asc">Stok: Terkecil</option>
-                <option value="desc">Stok: Terbesar</option>
-              </select>
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Cari nama atau kategori..."
-                className="px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-sm text-gray-700 bg-white w-40 md:w-56 transition-all shadow-sm font-medium"
-              />
-              <button
-                onClick={() => setModal({ mode: 'add' })}
-                className="px-4 py-2.5 bg-pink-500 text-white font-bold rounded-xl hover:bg-pink-600 transition-all active:scale-95 shadow-lg shadow-pink-100 text-sm whitespace-nowrap"
-              >
-                ＋ Tambah
-              </button>
-            </div>
-          </header>
-
-          {/* SUMMARY STATS */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 pt-4">
-            {[
-              { label: 'Total Produk', value: filtered.length, icon: '📦' },
-              { label: 'Stok Kritis (≤3)', value: filtered.filter(p => (p.stock ?? 0) <= 3).length, icon: '⚠️' },
-              { label: 'Total Nilai Stok', value: formatIDR(filtered.reduce((a, p) => a + (p.harga_modal * (p.stock ?? 0)), 0)), icon: '💰' },
-            ].map((stat) => (
-              <div key={stat.label} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm transition-all hover:shadow-md">
-                <p className="text-2xl mb-2">{stat.icon}</p>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1">{stat.label}</p>
-                <p className="text-xl font-bold text-gray-800 tracking-tight">{stat.value}</p>
+            {/* HEADER (STICKY WITH GLASSMORPHISM) */}
+            <header className="sticky top-0 z-40 bg-gray-50/70 backdrop-blur-md -mx-4 md:-mx-8 px-4 md:px-8 py-6 mb-4 flex flex-col md:flex-row justify-between gap-4 border-b border-gray-200/50">
+              <div>
+                <h1 className="text-3xl font-bold text-pink-500 tracking-tighter">Kelola Produk</h1>
+                <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mt-1">{filtered.length} produk ditampilkan</p>
               </div>
-            ))}
-          </div>
-
-          {/* PRODUCT TABLE */}
-          <section className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
-              <h3 className="font-bold text-gray-700">Daftar Produk</h3>
-              {products.length > 0 && (
-                <button
-                  onClick={exportProductsCSV}
-                  className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded-xl hover:bg-green-600 transition-all shadow-md shadow-green-100 flex items-center gap-2"
+              <div className="flex gap-2 items-start flex-wrap md:flex-nowrap">
+                <select
+                  value={filterCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                  className="px-3 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-xs text-gray-700 bg-white transition-all shadow-sm font-bold cursor-pointer outline-none max-w-[140px] truncate"
                 >
-                  ⬇ Export CSV
+                  <option value="Semua">Semua Kategori</option>
+                  {uniqueCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                <select
+                  value={sortByStock}
+                  onChange={(e) => setSortByStock(e.target.value)}
+                  className="px-3 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-xs text-gray-700 bg-white transition-all shadow-sm font-bold cursor-pointer outline-none"
+                >
+                  <option value="none">Stok: Default</option>
+                  <option value="asc">Stok: Terkecil</option>
+                  <option value="desc">Stok: Terbesar</option>
+                </select>
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Cari nama atau kategori..."
+                  className="px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-sm text-gray-700 bg-white w-40 md:w-56 transition-all shadow-sm font-medium"
+                />
+                <button
+                  onClick={() => setModal({ mode: 'add' })}
+                  className="px-4 py-2.5 bg-pink-500 text-white font-bold rounded-xl hover:bg-pink-600 transition-all active:scale-95 shadow-lg shadow-pink-100 text-sm whitespace-nowrap"
+                >
+                  ＋ Tambah
                 </button>
-              )}
+              </div>
+            </header>
+
+            {/* SUMMARY STATS */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 pt-4">
+              {[
+                { label: 'Total Produk', value: filtered.length, icon: '📦' },
+                { label: 'Stok Kritis (≤3)', value: filtered.filter(p => (p.stock ?? 0) <= 3).length, icon: '⚠️' },
+                { label: 'Total Nilai Stok', value: formatIDR(filtered.reduce((a, p) => a + (p.harga_modal * (p.stock ?? 0)), 0)), icon: '💰' },
+              ].map((stat) => (
+                <div key={stat.label} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm transition-all hover:shadow-md">
+                  <p className="text-2xl mb-2">{stat.icon}</p>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1">{stat.label}</p>
+                  <p className="text-xl font-bold text-gray-800 tracking-tight">{stat.value}</p>
+                </div>
+              ))}
             </div>
-            <div className="overflow-x-auto">
-              {loading ? (
-                <div className="p-16 text-center text-gray-400">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500 mx-auto mb-4"></div>
-                  Memuat produk...
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className="p-16 text-center text-gray-300">
-                  <span className="text-4xl block mb-3 opacity-30">📭</span>
-                  <p className="font-medium">Belum ada produk yang cocok, nih.</p>
-                </div>
-              ) : (
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 bg-gray-50/50">
-                      <th className="px-6 py-5">Produk & Kategori</th>
-                      <th className="px-6 py-5 text-right">Harga Modal</th>
-                      <th className="px-6 py-5 text-right">Harga Jual</th>
-                      <th className="px-6 py-5 text-center">Stok</th>
-                      <th className="px-6 py-5 text-center">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {filtered.map((product) => {
 
-                      const isLowStock = (product.stock ?? 0) <= 3
-                      return (
-                        <tr key={product.id} className="hover:bg-gray-50/70 transition-colors group">
-                          <td className="px-6 py-5">
-                            <p className="font-semibold text-gray-700 leading-tight mb-1.5">{product.name}</p>
-                            <span className="text-[9px] bg-pink-50 text-pink-500 px-2.5 py-0.5 rounded-full font-medium uppercase tracking-widest">
-                              {product.category || 'Umum'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-5 text-right text-gray-400 text-sm font-medium">
-                            {formatIDR(product.harga_modal)}
-                          </td>
-                          <td className="px-6 py-5 text-right font-bold text-pink-500 text-sm">
-                            {formatIDR(product.harga_jual)}
-                          </td>
+            {/* PRODUCT TABLE */}
+            <section className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
+              <div className="p-6 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
+                <h3 className="font-bold text-gray-700">Daftar Produk</h3>
+                {products.length > 0 && (
+                  <button
+                    onClick={exportProductsCSV}
+                    className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded-xl hover:bg-green-600 transition-all shadow-md shadow-green-100 flex items-center gap-2"
+                  >
+                    ⬇ Export CSV
+                  </button>
+                )}
+              </div>
+              <div className="overflow-x-auto">
+                {loading ? (
+                  <div className="p-16 text-center text-gray-400">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500 mx-auto mb-4"></div>
+                    Memuat produk...
+                  </div>
+                ) : filtered.length === 0 ? (
+                  <div className="p-16 text-center text-gray-300">
+                    <span className="text-4xl block mb-3 opacity-30">📭</span>
+                    <p className="font-medium">Belum ada produk yang cocok, nih.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 bg-gray-50/50">
+                        <th className="px-6 py-5">Produk & Kategori</th>
+                        <th className="px-6 py-5 text-right">Harga Modal</th>
+                        <th className="px-6 py-5 text-right">Harga Jual</th>
+                        <th className="px-6 py-5 text-center">Stok</th>
+                        <th className="px-6 py-5 text-center">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {filtered.map((product) => {
 
-                          <td className="px-6 py-5 text-center">
-                            <span className={`text-sm font-semibold px-3 py-1 rounded-lg
+                        const isLowStock = (product.stock ?? 0) <= 3
+                        return (
+                          <tr key={product.id} className="hover:bg-gray-50/70 transition-colors group">
+                            <td className="px-6 py-5">
+                              <p className="font-semibold text-gray-700 leading-tight mb-1.5">{product.name}</p>
+                              <span className="text-[9px] bg-pink-50 text-pink-500 px-2.5 py-0.5 rounded-full font-medium uppercase tracking-widest">
+                                {product.category || 'Umum'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-5 text-right text-gray-400 text-sm font-medium">
+                              {formatIDR(product.harga_modal)}
+                            </td>
+                            <td className="px-6 py-5 text-right font-bold text-pink-500 text-sm">
+                              {formatIDR(product.harga_jual)}
+                            </td>
+
+                            <td className="px-6 py-5 text-center">
+                              <span className={`text-sm font-semibold px-3 py-1 rounded-lg
                               ${isLowStock ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>
-                              {isLowStock && '⚠️ '}{product.stock ?? 0}
-                            </span>
-                          </td>
-                          <td className="px-6 py-5 text-center">
-                            <div className="flex gap-2 justify-center transition-all">
-                              <button
-                                onClick={() => setModal({ mode: 'edit', product })}
-                                className="px-3.5 py-2 bg-blue-50 text-blue-600 text-[10px] font-bold rounded-xl hover:bg-blue-100 transition-all uppercase tracking-widest border border-blue-100/50"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDelete(product)}
-                                className="px-3.5 py-2 bg-rose-50 text-rose-500 text-[10px] font-bold rounded-xl hover:bg-rose-100 transition-all uppercase tracking-widest border border-rose-100/50"
-                              >
-                                Hapus
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </section>
+                                {isLowStock && '⚠️ '}{product.stock ?? 0}
+                              </span>
+                            </td>
+                            <td className="px-6 py-5 text-center">
+                              <div className="flex gap-2 justify-center transition-all">
+                                <button
+                                  onClick={() => setModal({ mode: 'edit', product })}
+                                  className="px-3.5 py-2 bg-blue-50 text-blue-600 text-[10px] font-bold rounded-xl hover:bg-blue-100 transition-all uppercase tracking-widest border border-blue-100/50"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(product)}
+                                  className="px-3.5 py-2 bg-rose-50 text-rose-500 text-[10px] font-bold rounded-xl hover:bg-rose-100 transition-all uppercase tracking-widest border border-rose-100/50"
+                                >
+                                  Hapus
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </section>
+          </div>
         </div>
       </main>
     </>

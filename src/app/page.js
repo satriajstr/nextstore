@@ -3,6 +3,9 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import Link from 'next/link'
+import { getRole, signOut } from '../lib/auth'
+import { useRouter } from 'next/navigation'
+import { useTheme } from '../lib/ThemeContext'
 
 // ─── Toast Component ──────────────────────────────────────────────────────────
 function Toast({ toast, onClose }) {
@@ -26,7 +29,36 @@ function Toast({ toast, onClose }) {
 }
 
 export default function Home() {
+  const router = useRouter()
+  const [role, setRole] = useState(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
 
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.replace('/login')
+        return
+      }
+      const userRole = await getRole()
+      if (userRole === 'admin') {
+        // Admin tidak punya akses ke halaman kasir
+        router.replace('/produk')
+        return
+      }
+      if (userRole !== 'kasir') {
+        // Role null atau tidak dikenali → paksa logout ke login
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
+      setRole(userRole)
+      setCheckingAuth(false)
+    }
+    checkAuth()
+  }, [router])
+
+  const { storeName, primaryColor } = useTheme()
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState([])
   const [loading, setLoading] = useState(true)
@@ -34,12 +66,19 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('Semua')
   const [showFullCart, setShowFullCart] = useState(false)
+  const [tappedProductId, setTappedProductId] = useState(null)
+
+  // Customization States
+  const [gridCols, setGridCols] = useState(3)
+  const [itemFontSize, setItemFontSize] = useState(16)
+  const [showSettings, setShowSettings] = useState(false)
 
   // Swipe & Animation Management
   const touchStart = useRef(0)
   // Checkout Modal States
   const [showCheckoutModal, setShowCheckoutModal] = useState(false)
   const [amountReceived, setAmountReceived] = useState('')
+  const [selectedQuickCash, setSelectedQuickCash] = useState(null)
   const [paymentMethod, setPaymentMethod] = useState('Tunai')
 
   const showToast = useCallback((message, type = 'success') => {
@@ -180,6 +219,7 @@ export default function Home() {
       setCart([])
       setVoucher(0)
       setAmountReceived('')
+      setSelectedQuickCash(null)
       setShowCheckoutModal(false)
       setShowFullCart(false)
       await getData()
@@ -242,8 +282,12 @@ export default function Home() {
 
   return (
     <>
-
       <Toast toast={toast} onClose={() => setToast(null)} />
+      {checkingAuth && (
+        <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500"></div>
+        </div>
+      )}
 
       {/* CHECKOUT MODAL (SMART CALCULATOR) */}
       {showCheckoutModal && (
@@ -251,7 +295,7 @@ export default function Home() {
           <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-md w-full p-8 animate-fade-in flex flex-col gap-6">
             <div className="flex justify-between items-center">
               <h3 className="text-xl font-bold text-gray-800">💳 Selesaikan Pembayaran</h3>
-              <button onClick={() => setShowCheckoutModal(false)} className="text-gray-300 hover:text-gray-500 text-2xl">×</button>
+              <button onClick={() => { setShowCheckoutModal(false); setAmountReceived(''); setSelectedQuickCash(null); }} className="text-gray-300 hover:text-gray-500 text-2xl">×</button>
             </div>
 
             {/* Total Display */}
@@ -291,14 +335,18 @@ export default function Home() {
                     { label: 'UANG PAS', value: totalTagihan.toString() },
                     { label: '10.000', value: '10000' },
                     { label: '20.000', value: '20000' },
+                    { label: '40.000', value: '40000' },
                     { label: '50.000', value: '50000' },
                     { label: '100.000', value: '100000' }
                   ].map((btn) => (
                     <button
                       key={btn.label}
-                      onClick={() => setAmountReceived(btn.value)}
+                      onClick={() => {
+                        setAmountReceived(btn.value)
+                        setSelectedQuickCash(btn.label)
+                      }}
                       className={`py-3 rounded-xl text-[10px] font-bold transition-colors duration-75 active:scale-95 border shadow-sm
-                        ${amountReceived === btn.value
+                        ${selectedQuickCash === btn.label
                           ? 'bg-pink-500 text-white border-pink-500 ring-2 ring-pink-100'
                           : 'bg-white text-gray-600 border-gray-100 active:bg-gray-50'}`}
                     >
@@ -343,17 +391,84 @@ export default function Home() {
           <div className="sticky top-0 z-40 bg-white/70 backdrop-blur-md p-4 md:p-8 border-b border-gray-100/50">
             <header className="flex flex-col gap-6">
               <div className="flex justify-between items-start">
-                <div>
-                  <h1 className="text-3xl font-bold text-pink-500 tracking-tight">Derastore</h1>
-                  <p className="text-gray-400 text-sm mt-1">Online SmartCashier</p>
-                </div>
                 <div className="flex items-center gap-3">
-                  <Link href="/produk" className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-200 transition-all shadow-sm border border-gray-200/50">
-                    📦 <span className="hidden sm:inline font-bold">Produk</span>
-                  </Link>
-                  <Link href="/laporan" className="flex items-center gap-2 px-4 py-2.5 bg-pink-50 text-pink-500 rounded-xl font-semibold text-sm hover:bg-pink-100 transition-all shadow-sm border border-pink-100/50">
-                    📊 <span className="hidden sm:inline font-bold">Laporan</span>
-                  </Link>
+                  <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shadow-lg flex-shrink-0"
+                    style={{ backgroundColor: primaryColor, boxShadow: `0 4px 14px ${primaryColor}50` }}>
+                    🛍️
+                  </div>
+                  <div className="min-w-0">
+                    <h1 className="font-black text-gray-800 tracking-tight leading-none text-xl truncate">{storeName}</h1>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] mt-1.5" style={{ color: primaryColor }}>
+                      Cashier Panel
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Settings Toggle */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowSettings(!showSettings)}
+                      className="p-2.5 bg-gray-50 text-gray-400 rounded-xl hover:bg-gray-100 hover:text-gray-600 transition-all border border-gray-100 shadow-sm"
+                      title="Pengaturan Tampilan"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className={`w-5 h-5 transition-transform duration-300 ${showSettings ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37a1.724 1.724 0 002.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </button>
+
+                    {showSettings && (
+                      <div className="absolute right-0 mt-3 w-56 bg-white/90 backdrop-blur-xl border border-gray-100 rounded-3xl shadow-2xl z-[60] p-5 animate-fade-in origin-top-right">
+                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-4">Pengaturan</h4>
+
+                        <div className="space-y-5">
+                          {/* Column Setting */}
+                          <div className="space-y-2">
+                            <label className="text-[11px] font-bold text-gray-600 block">Kolom Produk (Desktop)</label>
+                            <div className="flex gap-2 p-1 bg-gray-50 rounded-xl">
+                              {[2, 3].map(cols => (
+                                <button
+                                  key={cols}
+                                  onClick={() => setGridCols(cols)}
+                                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${gridCols === cols ? 'bg-white text-pink-500 shadow-sm shadow-pink-100' : 'text-gray-400'}`}
+                                >
+                                  {cols} Kolom
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Font Size Setting */}
+                          <div className="space-y-2">
+                            <label className="text-[11px] font-bold text-gray-600 block">Ukuran Font Nama ({itemFontSize}px)</label>
+                            <input
+                              type="range"
+                              min="12"
+                              max="20"
+                              step="1"
+                              value={itemFontSize}
+                              onChange={(e) => setItemFontSize(parseInt(e.target.value))}
+                              className="w-full h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                            />
+                            <div className="flex justify-between text-[9px] text-gray-400 font-bold px-1">
+                              <span>KECIL</span>
+                              <span>BESAR</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={signOut}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-500 rounded-xl font-bold text-xs hover:bg-red-100 transition-all shadow-sm border border-red-100/50 uppercase tracking-widest group"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+                    </svg>
+                    <span className="hidden sm:inline">Logout</span>
+                  </button>
                 </div>
               </div>
 
@@ -364,8 +479,19 @@ export default function Home() {
                   placeholder="Cari produk..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-gray-200/20 backdrop-blur-sm border border-gray-200/50 rounded-2xl text-sm focus:outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100/30 transition-all shadow-sm font-normal"
+                  className="w-full pl-11 pr-12 py-3.5 bg-gray-200/20 backdrop-blur-sm border border-gray-200/50 rounded-2xl text-sm focus:outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100/30 transition-all shadow-sm font-normal"
                 />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center bg-gray-200/50 hover:bg-gray-300/50 text-gray-500 rounded-full transition-all active:scale-90"
+                    title="Clear search"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
               </div>
 
             </header>
@@ -382,28 +508,41 @@ export default function Home() {
                 <button onClick={() => { setSearchTerm(''); setSelectedCategory('Semua') }} className="text-pink-500 text-xs font-bold mt-2 hover:underline">Reset Filter</button>
               </div>
             ) : (
-              <div key={selectedCategory} className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              <div
+                key={selectedCategory}
+                className={`grid gap-4 ${gridCols === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}
+              >
                 {filteredProducts.map((product) => (
                   <button
                     key={product.id}
                     disabled={processing}
-                    onClick={() => addToCart(product)}
-                    className="flex flex-col p-5 bg-white rounded-3xl shadow-sm border border-gray-100 hover:border-pink-200 hover:shadow-xl hover:shadow-pink-50/50 transition-all active:scale-90 text-left h-44 disabled:opacity-50 group overflow-hidden relative"
+                    onClick={() => {
+                      addToCart(product)
+                      setTappedProductId(product.id)
+                      setTimeout(() => setTappedProductId(null), 600)
+                    }}
+                    className="flex flex-col p-5 bg-white rounded-3xl shadow-sm border border-gray-100 hover:border-pink-200 hover:shadow-xl hover:shadow-pink-50/50 transition-all active:scale-95 text-left h-40 disabled:opacity-50 group overflow-hidden relative"
                   >
                     <div className="flex flex-col gap-1.5 items-start relative z-10">
                       <span className="text-[9px] bg-pink-50 text-pink-500 px-2.5 py-0.5 rounded-full font-medium uppercase tracking-widest">
                         {product.category || 'Umum'}
                       </span>
-                      <span className="font-semibold text-gray-800 text-base line-clamp-2 leading-snug group-hover:text-pink-600 transition-colors">
+                      <span
+                        className="font-semibold text-gray-800 line-clamp-2 leading-snug group-hover:text-pink-600 transition-colors"
+                        style={{ fontSize: `${itemFontSize}px` }}
+                      >
                         {product.name}
                       </span>
                     </div>
                     <div className="mt-auto relative z-10">
-                      <span className="text-pink-500 font-bold block text-lg mb-1">{formatIDR(product.harga_jual)}</span>
-                      <span className="text-[11px] text-gray-400 font-normal">Stok: {product.stock ?? 0}</span>
+                      <span className="text-pink-500 font-bold block text-lg">{formatIDR(product.harga_jual)}</span>
                     </div>
-                    {/* Visual Feedback Overlay */}
-                    <div className="absolute inset-0 bg-pink-500/0 group-active:bg-pink-500/5 transition-colors duration-100"></div>
+                    {/* Add-to-cart feedback overlay */}
+                    {tappedProductId === product.id && (
+                      <div className="absolute inset-0 z-20 flex items-center justify-center bg-pink-500/10 rounded-3xl animate-cart-ping">
+                        <span className="text-pink-500 font-bold text-lg animate-cart-float">+1 🛒</span>
+                      </div>
+                    )}
                   </button>
                 ))}
               </div>
@@ -530,7 +669,11 @@ export default function Home() {
 
                 <button
                   disabled={cart.length === 0 || processing}
-                  onClick={() => setShowCheckoutModal(true)}
+                  onClick={() => {
+                    setAmountReceived('')
+                    setSelectedQuickCash(null)
+                    setShowCheckoutModal(true)
+                  }}
                   className={`w-full py-5 rounded-[2rem] font-bold text-lg transition-all shadow-xl active:scale-[0.98]
                     ${cart.length === 0 || processing
                       ? 'bg-gray-100 text-gray-300 shadow-none'
@@ -545,23 +688,25 @@ export default function Home() {
         </section>
       </main>
 
-      {/* MOBILE TRIGGER (ONLY IF CART) */}
+      {/* MOBILE FLOATING CART TRIGGER */}
       {cart.length > 0 && !showFullCart && (
-        <div className="md:hidden fixed bottom-6 left-6 right-6 z-50 animate-fade-in">
+        <div className="md:hidden fixed bottom-5 left-4 right-4 z-50 animate-slide-in">
           <button
             onClick={() => setShowFullCart(true)}
-            className="w-full bg-gray-900 text-white p-5 rounded-[2.5rem] shadow-2xl flex justify-between items-center ring-8 ring-white/80 active:scale-95 transition-transform"
+            className="w-full bg-gradient-to-r from-gray-900 to-gray-800 text-white px-5 py-4 rounded-2xl shadow-2xl shadow-black/20 flex justify-between items-center active:scale-[0.97] transition-all duration-150 border border-white/5"
           >
-            <div className="flex items-center gap-4">
-              <div className="bg-pink-500 w-10 h-10 rounded-full flex items-center justify-center font-bold">
+            <div className="flex items-center gap-3">
+              <div className="bg-pink-500 w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm shadow-lg shadow-pink-500/30">
                 {cart.reduce((a, b) => a + b.quantity, 0)}
               </div>
               <div className="text-left">
-                <p className="text-[10px] text-gray-400 uppercase font-normal tracking-widest mb-0.5">Total Bayar</p>
-                <p className="font-bold text-lg leading-none">{formatIDR(totalTagihan)}</p>
+                <p className="text-[9px] text-gray-400 uppercase font-medium tracking-widest">Total</p>
+                <p className="font-bold text-base leading-tight tracking-tight">{formatIDR(totalTagihan)}</p>
               </div>
             </div>
-            <span className="bg-white/10 px-5 py-2.5 rounded-2xl text-xs font-bold uppercase tracking-widest">Lanjut Pembayaran →</span>
+            <span className="text-white font-bold text-sm tracking-wide">
+              Bayar →
+            </span>
           </button>
         </div>
       )}

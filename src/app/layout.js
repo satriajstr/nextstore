@@ -1,4 +1,5 @@
 import "./globals.css";
+import { ThemeProvider } from '../lib/ThemeContext';
 
 export const metadata = {
   title: "Derashop",
@@ -14,7 +15,9 @@ export default function RootLayout({ children }) {
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
       </head>
       <body className="antialiased" style={{ fontFamily: "'Inter', sans-serif", letterSpacing: "-0.01em" }}>
-        {children}
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );
