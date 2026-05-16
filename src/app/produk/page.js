@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
-import { getRole } from '../../lib/auth'
+import { getUserProfile, getRole } from '../../lib/auth'
 import { useRouter } from 'next/navigation'
 import AdminSidebar from '../../components/AdminSidebar'
 
@@ -241,6 +241,7 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Produk() {
   const router = useRouter()
+  const [profile, setProfile] = useState(null)
   const [role, setRole] = useState(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
 
@@ -251,19 +252,26 @@ export default function Produk() {
         router.replace('/login')
         return
       }
-      const userRole = await getRole()
-      if (userRole === 'kasir') {
-        // Kasir tidak punya akses ke halaman ini
-        router.replace('/')
-        return
-      }
-      if (userRole !== 'admin') {
-        // Role null atau tidak dikenali → paksa logout ke login
+      const userProfile = await getUserProfile()
+      if (!userProfile) {
         await supabase.auth.signOut()
         router.replace('/login')
         return
       }
-      setRole(userRole)
+
+      if (userProfile.role === 'kasir') {
+        router.replace('/')
+        return
+      }
+
+      if (userProfile.role !== 'admin') {
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
+
+      setProfile(userProfile)
+      setRole(userProfile.role)
       setCheckingAuth(false)
     }
     checkAuth()
@@ -293,11 +301,13 @@ export default function Produk() {
   const handleConfirmNo = () => { confirmState?.resolve(false); setConfirmState(null) }
 
   // ─── Fetch ──────────────────────────────────────────────────────────────────
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
+    if (!profile?.store_id) return
     setLoading(true)
     const { data, error } = await supabase
       .from('products')
       .select('*')
+      .eq('store_id', profile.store_id)
       .order('name', { ascending: true })
     if (error) {
       showToast('Gagal memuat data produk.', 'error')
@@ -305,14 +315,17 @@ export default function Produk() {
       setProducts(data || [])
     }
     setLoading(false)
-  }
+  }, [profile?.store_id])
 
-  useEffect(() => { fetchProducts() }, [])
+  useEffect(() => { fetchProducts() }, [fetchProducts])
 
   // ─── CREATE ─────────────────────────────────────────────────────────────────
   const handleAdd = async (formData) => {
     setSaving(true)
-    const { error } = await supabase.from('products').insert([formData])
+    const { error } = await supabase.from('products').insert([{
+      ...formData,
+      store_id: profile.store_id
+    }])
     if (error) {
       showToast('Gagal menambah produk.', 'error')
     } else {

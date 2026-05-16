@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
-import { getRole } from '../../lib/auth'
+import { getUserProfile, getRole } from '../../lib/auth'
 import { useRouter } from 'next/navigation'
 import AdminSidebar from '../../components/AdminSidebar'
 
@@ -61,6 +61,7 @@ function ConfirmDialog({ confirm, onYes, onNo }) {
 
 export default function Laporan() {
   const router = useRouter()
+  const [profile, setProfile] = useState(null)
   const [role, setRole] = useState(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
 
@@ -71,19 +72,26 @@ export default function Laporan() {
         router.replace('/login')
         return
       }
-      const userRole = await getRole()
-      if (userRole === 'kasir') {
-        // Kasir tidak punya akses ke halaman ini
-        router.replace('/')
-        return
-      }
-      if (userRole !== 'admin') {
-        // Role null atau tidak dikenali → paksa logout ke login
+      const userProfile = await getUserProfile()
+      if (!userProfile) {
         await supabase.auth.signOut()
         router.replace('/login')
         return
       }
-      setRole(userRole)
+
+      if (userProfile.role === 'kasir') {
+        router.replace('/')
+        return
+      }
+
+      if (userProfile.role !== 'admin') {
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
+
+      setProfile(userProfile)
+      setRole(userProfile.role)
       setCheckingAuth(false)
     }
     checkAuth()
@@ -123,7 +131,8 @@ export default function Laporan() {
   }
 
   // ─── Data Fetching ─────────────────────────────────────────────────────────
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
+    if (!profile?.store_id) return
     setLoading(true)
     const todayStr = new Date().toISOString().split('T')[0]
     const { data, error } = await supabase
@@ -135,6 +144,7 @@ export default function Laporan() {
           products ( name )
         )
       `)
+      .eq('store_id', profile.store_id)
       .gte('created_at', todayStr)
       .order('created_at', { ascending: false })
 
@@ -151,31 +161,35 @@ export default function Laporan() {
       setTotalQRIS(qris)
     }
     setLoading(false)
-  }
+  }, [profile?.store_id])
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
+    if (!profile?.store_id) return
     const { data } = await supabase
       .from('daily_summary')
       .select('*')
+      .eq('store_id', profile.store_id)
       .order('date', { ascending: false })
     if (data) setHistory(data)
-  }
+  }, [profile?.store_id])
 
-  const checkStatus = async () => {
+  const checkStatus = useCallback(async () => {
+    if (!profile?.store_id) return
     const today = new Date().toISOString().split('T')[0]
     const { data } = await supabase
       .from('daily_summary')
       .select('status')
+      .eq('store_id', profile.store_id)
       .eq('date', today)
       .maybeSingle()
     setIsClosed(data?.status === 'closed')
-  }
+  }, [profile?.store_id])
 
   useEffect(() => {
     fetchTransactions()
     checkStatus()
     fetchHistory()
-  }, [])
+  }, [fetchTransactions, checkStatus, fetchHistory])
 
   // ─── Batal Transaksi ──────────────────────────────────────────────────────
   const handleVoidTransaction = async (trx) => {
@@ -265,6 +279,7 @@ export default function Laporan() {
       const { data: existing } = await supabase
         .from('daily_summary')
         .select('carry_over, carry_modal, carry_diskon, carry_trx_count')
+        .eq('store_id', profile.store_id)
         .eq('date', today)
         .maybeSingle()
 
@@ -297,6 +312,7 @@ export default function Laporan() {
         .from('daily_summary')
         .upsert({
           date: today,
+          store_id: profile.store_id,
           total_penjualan: totalPenjualan,
           jumlah_transaksi: jumlahTrx,
           total_modal: totalModal,
@@ -307,7 +323,7 @@ export default function Laporan() {
           carry_modal: carryModal,
           carry_diskon: carryDiskon,
           carry_trx_count: carryTrxCount
-        }, { onConflict: 'date' })
+        }, { onConflict: 'date, store_id' })
 
       if (error) throw error
 
@@ -441,6 +457,7 @@ export default function Laporan() {
       const { data: trxList, error: trxErr } = await supabase
         .from('transactions')
         .select('id, created_at, total_harga, diskon, payment_method')
+        .eq('store_id', profile.store_id)
         .gte('created_at', dateStr)
         .lt('created_at', new Date(new Date(dateStr).getTime() + 86400000).toISOString().split('T')[0])
         .order('created_at', { ascending: true })

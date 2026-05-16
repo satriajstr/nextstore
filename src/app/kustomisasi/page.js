@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { getRole } from '../../lib/auth'
+import { getRole, getUserProfile } from '../../lib/auth'
 import { useRouter } from 'next/navigation'
 import { useTheme, THEME_DEFAULTS } from '../../lib/ThemeContext'
 import AdminSidebar from '../../components/AdminSidebar'
@@ -35,37 +35,63 @@ export default function Kustomisasi() {
   const [storeName, setStoreName] = useState('')
   const [selectedColor, setSelectedColor] = useState('')
   const [customColor, setCustomColor] = useState('')
+  const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  // Auth check
+  // Auth & Initial Data Load
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
-      const userRole = await getRole()
-      if (userRole === 'kasir') { router.replace('/'); return }
-      if (userRole !== 'admin') { await supabase.auth.signOut(); router.replace('/login'); return }
+      
+      const userProfile = await getUserProfile()
+      if (!userProfile) { await supabase.auth.signOut(); router.replace('/login'); return }
+      if (userProfile.role === 'kasir') { router.replace('/'); return }
+      
+      // Fetch current store settings from DB
+      const { data: store } = await supabase
+        .from('stores')
+        .select('name, primary_color')
+        .eq('id', userProfile.store_id)
+        .single()
+
+      if (store) {
+        setStoreName(store.name)
+        setSelectedColor(store.primary_color || currentColor)
+        setCustomColor(store.primary_color || currentColor)
+      }
+      
       setCheckingAuth(false)
     }
     checkAuth()
-  }, [router])
-
-  // Sync from context after it loads
-  useEffect(() => {
-    if (!checkingAuth) {
-      setStoreName(currentName)
-      setSelectedColor(currentColor)
-      setCustomColor(currentColor)
-    }
-  }, [checkingAuth, currentName, currentColor])
+  }, [router, currentColor])
 
   const activeColor = selectedColor || currentColor
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!storeName.trim()) return
-    saveTheme({ storeName: storeName.trim(), primaryColor: activeColor })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2500)
+    setLoading(true)
+
+    const userProfile = await getUserProfile()
+    
+    // 1. Update Database
+    const { error } = await supabase
+      .from('stores')
+      .update({ 
+        name: storeName.trim(), 
+        primary_color: activeColor 
+      })
+      .eq('id', userProfile.store_id)
+
+    if (error) {
+      alert('Gagal menyimpan ke database')
+    } else {
+      // 2. Update Local Context for immediate feel
+      saveTheme({ storeName: storeName.trim(), primaryColor: activeColor })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    }
+    setLoading(false)
   }
 
   const handleReset = () => {
@@ -130,21 +156,6 @@ export default function Kustomisasi() {
                 <p className="text-[10px] text-gray-400 text-right">{storeName.length}/30 karakter</p>
               </div>
 
-              {/* Preview */}
-              <div className="mt-6 p-4 rounded-2xl border border-dashed border-gray-200 bg-gray-50/50">
-                <p className="text-[9px] text-gray-400 uppercase tracking-widest font-bold mb-2">Preview</p>
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl flex items-center justify-center text-base shadow-md"
-                    style={{ backgroundColor: activeColor }}>
-                    🛍️
-                  </div>
-                  <div>
-                    <p className="font-black text-gray-800 leading-none text-base">{storeName || 'Nama Toko'}</p>
-                    <p className="text-[10px] font-bold uppercase tracking-widest mt-0.5"
-                      style={{ color: activeColor }}>Admin Panel</p>
-                  </div>
-                </div>
-              </div>
             </div>
 
             {/* ── Primary Color ────────────────────────────── */}
@@ -229,32 +240,17 @@ export default function Kustomisasi() {
                 </div>
               </div>
 
-              {/* Color preview bar */}
-              <div className="mt-6 space-y-2">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Preview Warna</p>
-                <div className="flex gap-2 flex-wrap">
-                  <span className="px-4 py-2 rounded-xl text-white text-xs font-bold shadow-md" style={{ backgroundColor: activeColor }}>
-                    Tombol Utama
-                  </span>
-                  <span className="px-4 py-2 rounded-xl text-xs font-bold border" style={{ color: activeColor, borderColor: activeColor + '40', backgroundColor: activeColor + '15' }}>
-                    Tombol Outline
-                  </span>
-                  <span className="px-4 py-2 rounded-xl text-xs font-bold" style={{ color: activeColor }}>
-                    Teks Link
-                  </span>
-                </div>
-              </div>
             </div>
 
             {/* ── Save Button ──────────────────────────────── */}
             <div className="flex gap-3">
               <button
                 onClick={handleSave}
-                disabled={!storeName.trim()}
+                disabled={!storeName.trim() || loading}
                 className="flex-1 py-4 rounded-2xl text-white font-black text-sm tracking-widest uppercase transition-all active:scale-[0.98] shadow-lg disabled:opacity-50"
                 style={{ backgroundColor: activeColor, boxShadow: `0 8px 20px ${activeColor}40` }}
               >
-                {saved ? '✅ Tersimpan!' : 'Simpan Perubahan'}
+                {loading ? '⏳ Menyimpan...' : saved ? '✅ Tersimpan!' : 'Simpan Perubahan'}
               </button>
               <button
                 onClick={handleReset}

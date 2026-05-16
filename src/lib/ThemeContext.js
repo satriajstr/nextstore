@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect } from 'react'
+import { supabase } from './supabase'
 
 const ThemeContext = createContext({})
 
@@ -34,15 +35,64 @@ export function ThemeProvider({ children }) {
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('derashop_theme')
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        if (parsed.storeName) setStoreName(parsed.storeName)
-        if (parsed.primaryColor) setPrimaryColor(parsed.primaryColor)
+    const loadTheme = async () => {
+      // 1. Get current session
+      const { data: { session } } = await supabase.auth.getSession()
+
+      // 2. If NOT logged in, use Local Storage or Defaults
+      if (!session) {
+        try {
+          const saved = localStorage.getItem('derashop_theme')
+          if (saved) {
+            const parsed = JSON.parse(saved)
+            if (parsed.storeName) setStoreName(parsed.storeName)
+            if (parsed.primaryColor) setPrimaryColor(parsed.primaryColor)
+          } else {
+            // Reset to defaults if no session and no saved theme
+            setStoreName(THEME_DEFAULTS.storeName)
+            setPrimaryColor(THEME_DEFAULTS.primaryColor)
+          }
+        } catch (e) { /* ignore */ }
+        setLoaded(true)
+        return
       }
-    } catch (e) { /* ignore */ }
-    setLoaded(true)
+
+      // 3. If Logged in, fetch fresh data from Database
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('store_id')
+        .eq('user_id', session.user.id)
+        .single()
+
+      if (profile?.store_id) {
+        const { data: store } = await supabase
+          .from('stores')
+          .select('name, primary_color')
+          .eq('id', profile.store_id)
+          .single()
+
+        if (store) {
+          setStoreName(store.name)
+          if (store.primary_color) setPrimaryColor(store.primary_color)
+          
+          // Sync to local storage so it persists for the session
+          localStorage.setItem('derashop_theme', JSON.stringify({ 
+            storeName: store.name, 
+            primaryColor: store.primary_color || primaryColor 
+          }))
+        }
+      }
+      setLoaded(true)
+    }
+
+    loadTheme()
+
+    // Listen for auth changes (Login/Logout) to refresh theme
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      loadTheme()
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
   const saveTheme = ({ storeName: name, primaryColor: color }) => {
