@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { getRole } from '../../lib/auth'
 import { useRouter } from 'next/navigation'
 import { useTheme } from '../../lib/ThemeContext'
+import Link from 'next/link'
 
 export default function Login() {
   const { storeName, primaryColor } = useTheme()
@@ -180,8 +181,14 @@ export default function Login() {
           </form>
 
           {/* Footer */}
-          <div className="mt-10 pt-6 border-t border-gray-50 text-center">
-            <p className="text-gray-300 text-xs font-medium">
+          <div className="mt-10 pt-6 border-t border-gray-50 text-center flex flex-col gap-2">
+            <p className="text-gray-400 text-xs font-medium">
+              Ingin mulai mengelola toko sendiri? <Link href="/register" className="font-bold hover:underline" style={{ color: primaryColor }}>Daftar sebagai Admin</Link>
+            </p>
+            <p className="text-gray-400 text-xs font-medium">
+              Punya kode akses kasir dari toko? <Link href="/register-kasir" className="font-bold hover:underline" style={{ color: primaryColor }}>Daftar di sini</Link>
+            </p>
+            <p className="text-gray-300 text-[9px] font-medium mt-2">
               © 2026 W Corporation · Sistem Manajemen Toko
             </p>
           </div>

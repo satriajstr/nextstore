@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import Link from 'next/link'
-import { getRole, signOut } from '../lib/auth'
+import { getUserProfile, signOut } from '../lib/auth'
 import { useRouter } from 'next/navigation'
 import { useTheme } from '../lib/ThemeContext'
 
@@ -30,6 +30,7 @@ function Toast({ toast, onClose }) {
 
 export default function Home() {
   const router = useRouter()
+  const [profile, setProfile] = useState(null)
   const [role, setRole] = useState(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
 
@@ -40,19 +41,32 @@ export default function Home() {
         router.replace('/login')
         return
       }
-      const userRole = await getRole()
-      if (userRole === 'admin') {
-        // Admin tidak punya akses ke halaman kasir
-        router.replace('/produk')
-        return
-      }
-      if (userRole !== 'kasir') {
-        // Role null atau tidak dikenali → paksa logout ke login
+      const userProfile = await getUserProfile()
+      if (!userProfile) {
         await supabase.auth.signOut()
         router.replace('/login')
         return
       }
-      setRole(userRole)
+
+      if (userProfile.role === 'admin') {
+        router.replace('/produk')
+        return
+      }
+
+      if (userProfile.role !== 'kasir') {
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
+
+      if (userProfile.status !== 'approved') {
+        setRole('pending_kasir')
+        setCheckingAuth(false)
+        return
+      }
+
+      setProfile(userProfile)
+      setRole(userProfile.role)
       setCheckingAuth(false)
     }
     checkAuth()
@@ -87,11 +101,13 @@ export default function Home() {
   }, [])
 
   // 1. Fetch Products
-  const getData = async () => {
+  const getData = useCallback(async () => {
+    if (!profile?.store_id) return
     setLoading(true)
     const { data, error } = await supabase
       .from('products')
       .select('*')
+      .eq('store_id', profile.store_id)
       .order('name', { ascending: true })
 
     if (data) {
@@ -100,11 +116,11 @@ export default function Home() {
       console.error("Error fetching products:", error)
     }
     setLoading(false)
-  }
+  }, [profile?.store_id])
 
   useEffect(() => {
     getData()
-  }, [])
+  }, [getData])
 
   // 2. Add to Cart Logic
   const addToCart = (product) => {
@@ -181,7 +197,8 @@ export default function Home() {
         .insert([{
           total_harga: totalTagihan,
           diskon: voucher,
-          payment_method: paymentMethod
+          payment_method: paymentMethod,
+          store_id: profile.store_id
         }])
         .select()
         .single()
@@ -193,7 +210,8 @@ export default function Home() {
         transaction_id: trx.id,
         product_id: item.id,
         quantity: item.quantity,
-        subtotal: item.harga_jual * item.quantity
+        subtotal: item.harga_jual * item.quantity,
+        store_id: profile.store_id
       }))
 
       const { error: itemError } = await supabase
@@ -286,6 +304,21 @@ export default function Home() {
       {checkingAuth && (
         <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500"></div>
+        </div>
+      )}
+
+      {role === 'pending_kasir' && (
+        <div className="fixed inset-0 z-[150] bg-gray-50 flex items-center justify-center p-6">
+          <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-xl p-10 text-center animate-fade-in border border-gray-100">
+            <div className="w-20 h-20 bg-amber-100 text-amber-500 rounded-3xl flex items-center justify-center text-4xl mx-auto mb-6">⏳</div>
+            <h2 className="text-2xl font-black text-gray-800 mb-3 tracking-tight">Akun Sedang Diverifikasi</h2>
+            <p className="text-gray-500 text-sm leading-relaxed mb-8">
+              Pendaftaran Anda berhasil! Namun, Admin toko perlu <strong>menyetujui</strong> akun Anda sebelum Anda bisa mulai bertransaksi.
+            </p>
+            <button onClick={signOut} className="w-full py-4 bg-gray-100 text-gray-600 rounded-2xl font-bold hover:bg-gray-200 transition-all active:scale-95 text-sm uppercase tracking-widest">
+              Keluar
+            </button>
+          </div>
         </div>
       )}
 
