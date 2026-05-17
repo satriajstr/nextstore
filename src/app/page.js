@@ -87,6 +87,14 @@ export default function Home() {
   const [itemFontSize, setItemFontSize] = useState(16)
   const [showSettings, setShowSettings] = useState(false)
 
+  // Logout & Password States
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [pwLoading, setPwLoading] = useState(false)
+  const [pwMessage, setPwMessage] = useState(null)
+
   // Swipe & Animation Management
   const touchStart = useRef(0)
   // Checkout Modal States
@@ -315,6 +323,36 @@ export default function Home() {
   // Extract Categories
   const categoriesList = ['Semua', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))]
 
+  const handleLogout = () => setShowLogoutConfirm(true)
+  const confirmLogout = () => { setShowLogoutConfirm(false); signOut() }
+  const cancelLogout = () => setShowLogoutConfirm(false)
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault()
+    if (newPassword.length < 6) {
+      setPwMessage({ type: 'error', text: 'Password minimal 6 karakter.' })
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPwMessage({ type: 'error', text: 'Password baru dan konfirmasi tidak cocok.' })
+      return
+    }
+    setPwLoading(true)
+    setPwMessage(null)
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) throw error
+      setPwMessage({ type: 'success', text: 'Password berhasil diubah!' })
+      setNewPassword('')
+      setConfirmPassword('')
+      setTimeout(() => { setShowChangePassword(false); setPwMessage(null) }, 2000)
+    } catch (err) {
+      setPwMessage({ type: 'error', text: err.message })
+    } finally {
+      setPwLoading(false)
+    }
+  }
+
 
 
   return (
@@ -323,6 +361,51 @@ export default function Home() {
       {checkingAuth && (
         <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500"></div>
+        </div>
+      )}
+
+      {/* LOGOUT CONFIRMATION MODAL */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-5 animate-fade-in text-center">
+            <div className="text-5xl">🚪</div>
+            <h3 className="text-xl font-bold text-gray-800">Keluar dari Kasir?</h3>
+            <p className="text-gray-500 text-sm">Anda akan logout dari sesi kasir ini. Pastikan semua transaksi sudah diselesaikan.</p>
+            <div className="flex gap-3">
+              <button onClick={cancelLogout} className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-600 font-semibold hover:bg-gray-200 transition-all text-sm">Batal</button>
+              <button onClick={confirmLogout} className="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 transition-all active:scale-95 shadow-lg shadow-red-100 text-sm">Ya, Logout</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CHANGE PASSWORD MODAL */}
+      {showChangePassword && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-5 animate-fade-in">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-bold text-gray-800">🔐 Ganti Password</h3>
+              <button onClick={() => { setShowChangePassword(false); setPwMessage(null); setNewPassword(''); setConfirmPassword('') }} className="text-gray-300 hover:text-gray-500 text-2xl">×</button>
+            </div>
+            {pwMessage && (
+              <div className={`p-3 rounded-xl text-sm font-medium ${pwMessage.type === 'success' ? 'bg-green-50 text-green-600 border border-green-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
+                {pwMessage.type === 'success' ? '✅' : '⚠️'} {pwMessage.text}
+              </div>
+            )}
+            <form onSubmit={handleChangePassword} className="flex flex-col gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">Password Baru</label>
+                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required placeholder="Minimal 6 karakter" className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm font-medium transition-all" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">Konfirmasi Password</label>
+                <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required placeholder="Ketik ulang password baru" className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm font-medium transition-all" />
+              </div>
+              <button type="submit" disabled={pwLoading} className="w-full py-3 rounded-xl bg-pink-500 text-white font-bold hover:bg-pink-600 transition-all active:scale-95 shadow-lg shadow-pink-100 disabled:opacity-50 text-sm">
+                {pwLoading ? 'Menyimpan...' : 'Simpan Password Baru'}
+              </button>
+            </form>
+          </div>
         </div>
       )}
 
@@ -475,7 +558,7 @@ export default function Home() {
                   <div className="min-w-0">
                     <h1 className="font-black text-gray-800 tracking-tight leading-none text-xl truncate">{storeName}</h1>
                     <p className="text-[10px] font-bold uppercase tracking-[0.15em] mt-1.5" style={{ color: primaryColor }}>
-                      Cashier Panel
+                      {profile?.full_name ? `Kasir: ${profile.full_name}` : 'Cashier Panel'}
                     </p>
                   </div>
                 </div>
@@ -532,12 +615,22 @@ export default function Home() {
                             </div>
                           </div>
                         </div>
+
+                        {/* Change Password in Settings */}
+                        <div className="pt-4 border-t border-gray-100 mt-1">
+                          <button
+                            onClick={() => { setShowChangePassword(true); setShowSettings(false) }}
+                            className="w-full py-2.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-600 hover:bg-amber-100 transition-all flex items-center justify-center gap-2"
+                          >
+                            🔐 Ganti Password
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
 
                   <button
-                    onClick={signOut}
+                    onClick={handleLogout}
                     className="flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-500 rounded-xl font-bold text-xs hover:bg-red-100 transition-all shadow-sm border border-red-100/50 uppercase tracking-widest group"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">

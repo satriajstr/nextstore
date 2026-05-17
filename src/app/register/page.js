@@ -8,6 +8,7 @@ import Link from 'next/link'
 
 export default function Register() {
   const { primaryColor } = useTheme()
+  const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [storeName, setStoreName] = useState('')
@@ -32,7 +33,8 @@ export default function Register() {
         options: {
           data: {
             role: 'admin',
-            store_name: storeName.trim()
+            store_name: storeName.trim(),
+            full_name: fullName.trim()
           }
         }
       })
@@ -82,6 +84,18 @@ export default function Register() {
           )}
 
           <form onSubmit={handleRegister} className="flex flex-col gap-5">
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Nama Lengkap</label>
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+                placeholder="Misal: Ahmad Fauzi"
+                className="w-full px-5 py-4 rounded-2xl border border-gray-200 bg-gray-50/50 focus:outline-none transition-all text-gray-700 font-medium text-sm"
+              />
+            </div>
+
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Nama Toko Anda</label>
               <input
