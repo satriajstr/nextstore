@@ -94,6 +94,7 @@ export default function Home() {
   const [amountReceived, setAmountReceived] = useState('')
   const [selectedQuickCash, setSelectedQuickCash] = useState(null)
   const [paymentMethod, setPaymentMethod] = useState('Tunai')
+  const [isClosed, setIsClosed] = useState(false)
 
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type })
@@ -118,9 +119,23 @@ export default function Home() {
     setLoading(false)
   }, [profile?.store_id])
 
+  // 1.1 Check Store Closed Status
+  const checkStatus = useCallback(async () => {
+    if (!profile?.store_id) return
+    const today = new Date().toISOString().split('T')[0]
+    const { data } = await supabase
+      .from('daily_summary')
+      .select('status')
+      .eq('store_id', profile.store_id)
+      .eq('date', today)
+      .maybeSingle()
+    setIsClosed(data?.status === 'closed')
+  }, [profile?.store_id])
+
   useEffect(() => {
     getData()
-  }, [getData])
+    checkStatus()
+  }, [getData, checkStatus])
 
   // 2. Add to Cart Logic
   const addToCart = (product) => {
@@ -183,6 +198,10 @@ export default function Home() {
   // 5. Finalize Checkout
   const handleFinalizeCheckout = async () => {
     if (cart.length === 0) return
+    if (isClosed) {
+      showToast('Toko sudah tutup hari ini! Transaksi baru tidak diperbolehkan.', 'error')
+      return
+    }
     if (paymentMethod === 'Tunai' && (parseInt(amountReceived) || 0) < totalTagihan) {
       showToast('Uang diterima kurang dari total tagihan!', 'error')
       return
@@ -322,6 +341,21 @@ export default function Home() {
         </div>
       )}
 
+      {isClosed && (
+        <div className="fixed inset-0 z-[150] bg-gray-50 flex items-center justify-center p-6">
+          <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-xl p-10 text-center animate-fade-in border border-gray-100">
+            <div className="w-20 h-20 bg-rose-100 text-rose-500 rounded-3xl flex items-center justify-center text-4xl mx-auto mb-6">🔒</div>
+            <h2 className="text-2xl font-black text-gray-800 mb-3 tracking-tight">Hari Kerja Ditutup</h2>
+            <p className="text-gray-500 text-sm leading-relaxed mb-8">
+              Toko <strong>{storeName}</strong> telah menutup operasional hari ini. Anda tidak dapat membuka kasir atau memproses transaksi baru hingga hari kerja dibuka kembali oleh Admin.
+            </p>
+            <button onClick={signOut} className="w-full py-4 bg-rose-50 text-rose-600 rounded-2xl font-bold hover:bg-rose-100 transition-all active:scale-95 text-sm uppercase tracking-widest">
+              Keluar / Logout
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* CHECKOUT MODAL (SMART CALCULATOR) */}
       {showCheckoutModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-md p-4">
@@ -422,6 +456,15 @@ export default function Home() {
         >
 
           <div className="sticky top-0 z-40 bg-white/70 backdrop-blur-md p-4 md:p-8 border-b border-gray-100/50">
+            {isClosed && (
+              <div className="mb-4 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3 text-amber-800 animate-pulse">
+                <span className="text-2xl">🔒</span>
+                <div>
+                  <p className="font-bold text-sm">Status Toko: HARI DITUTUP</p>
+                  <p className="text-xs text-amber-700">Toko telah melakukan penutupan hari. Transaksi baru tidak diperbolehkan hingga hari dibuka kembali oleh Admin.</p>
+                </div>
+              </div>
+            )}
             <header className="flex flex-col gap-6">
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-3">
@@ -701,19 +744,19 @@ export default function Home() {
                 </div>
 
                 <button
-                  disabled={cart.length === 0 || processing}
+                  disabled={cart.length === 0 || processing || isClosed}
                   onClick={() => {
                     setAmountReceived('')
                     setSelectedQuickCash(null)
                     setShowCheckoutModal(true)
                   }}
                   className={`w-full py-5 rounded-[2rem] font-bold text-lg transition-all shadow-xl active:scale-[0.98]
-                    ${cart.length === 0 || processing
+                    ${cart.length === 0 || processing || isClosed
                       ? 'bg-gray-100 text-gray-300 shadow-none'
                       : 'bg-pink-500 text-white hover:bg-pink-600 shadow-pink-100'
                     }`}
                 >
-                  {processing ? 'Memproses...' : 'Metode Pembayaran'}
+                  {isClosed ? '🔒 Hari Sudah Ditutup' : processing ? 'Memproses...' : 'Metode Pembayaran'}
                 </button>
               </div>
             </div>

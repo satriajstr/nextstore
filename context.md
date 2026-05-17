@@ -38,48 +38,150 @@ User → Next.js → Supabase → Database
 
 ## 🗃️ DATABASE STRUCTURE
 
-### Table: products
+## 🗃️ DATABASE STRUCTURE
 
-* id (uuid, primary key)
-* name (text)
-* harga_modal (integer)
-* harga_jual (integer)
-* stock (integer, optional)
-* created_at (timestamp)
+```sql
+-- 1. STORES
+CREATE TABLE public.stores (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  owner_id uuid REFERENCES auth.users(id),
+  created_at timestamp with time zone DEFAULT now(),
+  primary_color text DEFAULT '#ec4899'::text,
+  CONSTRAINT stores_pkey PRIMARY KEY (id)
+);
+
+-- 2. PROFILES
+CREATE TABLE public.profiles (
+  user_id uuid NOT NULL REFERENCES auth.users(id),
+  role text NOT NULL DEFAULT 'kasir'::text, -- Menggunakan text untuk fleksibilitas role ('admin', 'kasir')
+  full_name text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  store_id uuid REFERENCES public.stores(id),
+  status text DEFAULT 'pending'::text, -- 'pending' atau 'approved'
+  CONSTRAINT profiles_pkey PRIMARY KEY (user_id)
+);
+
+-- 3. PRODUCTS
+CREATE TABLE public.products (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  harga_modal integer NOT NULL,
+  harga_jual integer NOT NULL,
+  created_at timestamp without time zone DEFAULT now(),
+  stock integer DEFAULT 0,
+  category text DEFAULT 'Umum'::text,
+  store_id uuid REFERENCES public.stores(id),
+  CONSTRAINT products_pkey PRIMARY KEY (id)
+);
+
+-- 4. TRANSACTIONS
+CREATE TABLE public.transactions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  total_harga integer NOT NULL,
+  created_at timestamp without time zone DEFAULT now(),
+  diskon integer DEFAULT 0,
+  payment_method text DEFAULT 'Tunai'::text,
+  refunded boolean NOT NULL DEFAULT false,
+  store_id uuid REFERENCES public.stores(id),
+  CONSTRAINT transactions_pkey PRIMARY KEY (id)
+);
+
+-- 5. TRANSACTION ITEMS
+CREATE TABLE public.transaction_items (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  transaction_id uuid REFERENCES public.transactions(id) ON DELETE CASCADE,
+  product_id uuid REFERENCES public.products(id),
+  quantity integer NOT NULL,
+  subtotal integer NOT NULL,
+  store_id uuid REFERENCES public.stores(id),
+  CONSTRAINT transaction_items_pkey PRIMARY KEY (id)
+);
+
+-- 6. DAILY SUMMARY (Kunci Integrasi Buka/Tutup Hari Multi-Tenant)
+CREATE TABLE public.daily_summary (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  date date NOT NULL,
+  total_penjualan integer DEFAULT 0,
+  jumlah_transaksi integer DEFAULT 0,
+  created_at timestamp without time zone DEFAULT now(),
+  total_modal integer DEFAULT 0,
+  keuntungan_bersih integer DEFAULT 0,
+  status text DEFAULT 'closed'::text,
+  carry_over integer DEFAULT 0,
+  total_diskon integer DEFAULT 0,
+  carry_modal numeric DEFAULT 0,
+  carry_diskon numeric DEFAULT 0,
+  carry_trx_count numeric DEFAULT 0,
+  store_id uuid REFERENCES public.stores(id),
+  CONSTRAINT daily_summary_pkey PRIMARY KEY (id),
+  -- FIX CRITICAL: Satu toko hanya boleh memiliki 1 rekap per hari. Tapi antar toko boleh di hari yang sama!
+  CONSTRAINT daily_summary_date_store_unique UNIQUE (date, store_id)
+);
+```
 
 ---
 
-### Table: transactions
+## 🔐 SECURITY & ROW LEVEL SECURITY (RLS)
 
-* id (uuid)
-* total_harga (integer)
-* created_at (timestamp)
+Seluruh akses dari client Next.js dibatasi secara ketat berdasarkan toko terdaftar milik kasir/admin yang sedang login.
 
----
+```sql
+-- Aktifkan RLS di semua tabel
+ALTER TABLE public.stores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transaction_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.daily_summary ENABLE ROW LEVEL SECURITY;
 
-### Table: transaction_items
+-- 1. RLS Profiles (Bebas Rekursi)
+CREATE POLICY "Profiles self access only"
+ON public.profiles
+FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
 
-* id (uuid)
-* transaction_id (uuid)
-* product_id (uuid)
-* quantity (integer)
-* subtotal (integer)
+-- 2. RLS Stores
+CREATE POLICY "Users can view their store"
+ON public.stores
+FOR SELECT
+USING (id = (SELECT store_id FROM public.profiles WHERE user_id = auth.uid()));
 
----
+CREATE POLICY "Owners can manage their store"
+ON public.stores
+FOR ALL
+USING (owner_id = auth.uid())
+WITH CHECK (owner_id = auth.uid());
 
-## 🔐 SECURITY (IMPORTANT)
+-- 3. RLS Products
+CREATE POLICY "Tenant isolation for products"
+ON public.products
+FOR ALL
+USING (store_id = (SELECT store_id FROM public.profiles WHERE user_id = auth.uid()))
+WITH CHECK (store_id = (SELECT store_id FROM public.profiles WHERE user_id = auth.uid()));
 
-* RLS (Row Level Security) ENABLED
-* Development policy:
+-- 4. RLS Transactions
+CREATE POLICY "Tenant isolation for transactions"
+ON public.transactions
+FOR ALL
+USING (store_id = (SELECT store_id FROM public.profiles WHERE user_id = auth.uid()))
+WITH CHECK (store_id = (SELECT store_id FROM public.profiles WHERE user_id = auth.uid()));
 
-ALLOW ALL (temporary)
+-- 5. RLS Transaction Items
+CREATE POLICY "Tenant isolation for transaction_items"
+ON public.transaction_items
+FOR ALL
+USING (store_id = (SELECT store_id FROM public.profiles WHERE user_id = auth.uid()))
+WITH CHECK (store_id = (SELECT store_id FROM public.profiles WHERE user_id = auth.uid()));
 
-SQL:
-create policy "allow all"
-on products
-for all
-using (true)
-with check (true);
+-- 6. RLS Daily Summary
+CREATE POLICY "Tenant isolation for daily_summary"
+ON public.daily_summary
+FOR ALL
+USING (store_id = (SELECT store_id FROM public.profiles WHERE user_id = auth.uid()))
+WITH CHECK (store_id = (SELECT store_id FROM public.profiles WHERE user_id = auth.uid()));
+```
 
 ---
 

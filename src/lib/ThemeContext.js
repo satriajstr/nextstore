@@ -35,6 +35,16 @@ export function ThemeProvider({ children }) {
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
+    // Sinkronisasi instan di browser sesaat setelah mount untuk mencegah text & style mismatch
+    try {
+      const saved = localStorage.getItem('derashop_theme')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed.storeName) setStoreName(parsed.storeName)
+        if (parsed.primaryColor) setPrimaryColor(parsed.primaryColor)
+      }
+    } catch (e) {}
+
     const loadTheme = async () => {
       // 1. Get current session
       const { data: { session } } = await supabase.auth.getSession()
@@ -172,9 +182,43 @@ export function ThemeProvider({ children }) {
     .accent-pink-500           { accent-color: ${primaryColor} !important; }
   `
 
+  const themeScript = `
+    (function() {
+      try {
+        var saved = localStorage.getItem('derashop_theme');
+        if (saved) {
+          var parsed = JSON.parse(saved);
+          var color = parsed.primaryColor;
+          if (color) {
+            document.documentElement.style.setProperty('--primary', color);
+            
+            // Hex to RGB conversion
+            var r = parseInt(color.slice(1, 3), 16);
+            var g = parseInt(color.slice(3, 5), 16);
+            var b = parseInt(color.slice(5, 7), 16);
+            var rgb = r + ', ' + g + ', ' + b;
+            document.documentElement.style.setProperty('--primary-rgb', rgb);
+            
+            // Darken conversion
+            var factor = 0.12;
+            var dr = Math.max(0, Math.round(r * (1 - factor)));
+            var dg = Math.max(0, Math.round(g * (1 - factor)));
+            var db = Math.max(0, Math.round(b * (1 - factor)));
+            var darker = '#' + dr.toString(16).padStart(2, '0') + dg.toString(16).padStart(2, '0') + db.toString(16).padStart(2, '0');
+            document.documentElement.style.setProperty('--primary-dark', darker);
+            
+            document.documentElement.style.setProperty('--primary-light', 'rgba(' + rgb + ', 0.12)');
+            document.documentElement.style.setProperty('--primary-lighter', 'rgba(' + rgb + ', 0.06)');
+          }
+        }
+      } catch (e) {}
+    })()
+  `;
+
   return (
     <ThemeContext.Provider value={{ storeName, primaryColor, primaryLight, primaryLighter, primaryShadow, saveTheme, loaded }}>
-      <style>{themeCSS}</style>
+      <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      <style suppressHydrationWarning>{themeCSS}</style>
       {children}
     </ThemeContext.Provider>
   )

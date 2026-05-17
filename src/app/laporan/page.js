@@ -198,6 +198,11 @@ export default function Laporan() {
       return
     }
 
+    if (!profile?.store_id) {
+      showToast('Gagal membatalkan transaksi: Toko tidak teridentifikasi.', 'error')
+      return
+    }
+
     const confirmed = await showConfirm({
       icon: '🗑️',
       title: 'Batalkan Transaksi?',
@@ -214,6 +219,7 @@ export default function Laporan() {
       const { data: items, error: fetchErr } = await supabase
         .from('transaction_items')
         .select('product_id, quantity')
+        .eq('store_id', profile.store_id)
         .eq('transaction_id', trx.id)
 
       if (fetchErr) throw fetchErr
@@ -223,6 +229,7 @@ export default function Laporan() {
         const { data: product } = await supabase
           .from('products')
           .select('stock')
+          .eq('store_id', profile.store_id)
           .eq('id', item.product_id)
           .single()
 
@@ -230,14 +237,23 @@ export default function Laporan() {
           await supabase
             .from('products')
             .update({ stock: (product.stock || 0) + item.quantity })
+            .eq('store_id', profile.store_id)
             .eq('id', item.product_id)
         }
       }
 
       // 3. Hapus transaksi (Hapus items dulu untuk menghindari error foreign key)
-      await supabase.from('transaction_items').delete().eq('transaction_id', trx.id)
+      await supabase
+        .from('transaction_items')
+        .delete()
+        .eq('store_id', profile.store_id)
+        .eq('transaction_id', trx.id)
 
-      const { error: deleteErr } = await supabase.from('transactions').delete().eq('id', trx.id)
+      const { error: deleteErr } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('store_id', profile.store_id)
+        .eq('id', trx.id)
 
       if (deleteErr) throw deleteErr
 
@@ -253,10 +269,19 @@ export default function Laporan() {
   const handleCloseDay = async () => {
     if (isClosed) return
 
+    if (!profile?.store_id) {
+      showToast('Gagal tutup hari: Toko tidak teridentifikasi.', 'error')
+      return
+    }
+
     if (transactions.length === 0) {
       const today = new Date().toISOString().split('T')[0]
       const { data: existing } = await supabase
-        .from('daily_summary').select('carry_over').eq('date', today).maybeSingle()
+        .from('daily_summary')
+        .select('carry_over')
+        .eq('store_id', profile.store_id)
+        .eq('date', today)
+        .maybeSingle()
       if (!existing || existing.carry_over === 0) {
         showToast('Belum ada transaksi untuk ditutup.', 'error')
         return
@@ -298,7 +323,7 @@ export default function Laporan() {
           .in('transaction_id', transactions.map(t => t.id))
         if (itemErr) throw itemErr
         items.forEach(item => {
-          modalSesi += item.products.harga_modal * item.quantity
+          modalSesi += (item.products?.harga_modal ?? 0) * item.quantity
         })
       }
 
@@ -343,7 +368,7 @@ export default function Laporan() {
 
     } catch (err) {
       console.error("CLOSE DAY ERROR:", err)
-      showToast('Gagal tutup hari. Periksa koneksi database.', 'error')
+      showToast(`Gagal tutup hari: ${err.message || 'Periksa koneksi database.'}`, 'error')
     } finally {
       setClosing(false)
     }
@@ -351,6 +376,11 @@ export default function Laporan() {
 
   // ─── Buka Hari ───────────────────────────────────────────────────────────
   const handleOpenDay = async () => {
+    if (!profile?.store_id) {
+      showToast('Gagal membuka hari: Toko tidak teridentifikasi.', 'error')
+      return
+    }
+
     const confirmed = await showConfirm({
       icon: '🔓',
       title: 'Buka Kembali Hari Ini?',
@@ -373,11 +403,14 @@ export default function Laporan() {
 
     try {
       if (resetData) {
-        const { data: currentSummary } = await supabase
+        const { data: currentSummary, error: summaryErr } = await supabase
           .from('daily_summary')
           .select('total_penjualan, total_modal, total_diskon, jumlah_transaksi')
+          .eq('store_id', profile.store_id)
           .eq('date', today)
           .single()
+
+        if (summaryErr) throw summaryErr
 
         await supabase
           .from('daily_summary')
@@ -388,6 +421,7 @@ export default function Laporan() {
             carry_diskon: currentSummary?.total_diskon ?? 0,
             carry_trx_count: currentSummary?.jumlah_transaksi ?? 0
           })
+          .eq('store_id', profile.store_id)
           .eq('date', today)
 
         const { error: itemsErr } = await supabase
@@ -399,15 +433,19 @@ export default function Laporan() {
         const { error: trxErr } = await supabase
           .from('transactions')
           .delete()
+          .eq('store_id', profile.store_id)
           .gte('created_at', today)
         if (trxErr) throw trxErr
 
         showToast('Hari dibuka. Transaksi direset. Penjualan baru akan diakumulasi.', 'success')
       } else {
-        await supabase
+        const { error: updateErr } = await supabase
           .from('daily_summary')
           .update({ status: 'open' })
+          .eq('store_id', profile.store_id)
           .eq('date', today)
+
+        if (updateErr) throw updateErr
 
         showToast('Hari dibuka kembali. Data penjualan tetap ada.', 'success')
       }
@@ -417,7 +455,7 @@ export default function Laporan() {
       fetchHistory()
     } catch (err) {
       console.error("OPEN DAY ERROR:", err)
-      showToast('Terjadi kesalahan saat membuka hari.', 'error')
+      showToast(`Terjadi kesalahan saat membuka hari: ${err.message || ''}`, 'error')
     }
   }
 
@@ -452,6 +490,11 @@ export default function Laporan() {
 
   // Export CSV detail per item transaksi untuk tanggal tertentu
   const exportDailyDetailCSV = async (dateStr) => {
+    if (!profile?.store_id) {
+      showToast('Gagal ekspor: Toko tidak teridentifikasi.', 'error')
+      return
+    }
+
     try {
       // 1. Ambil semua transaksi pada tanggal tersebut
       const { data: trxList, error: trxErr } = await supabase
@@ -505,23 +548,23 @@ export default function Laporan() {
           timeZone: 'Asia/Jakarta',
           hour: '2-digit', minute: '2-digit', second: '2-digit'
         })
-        const subModal = item.products.harga_modal * item.quantity
+        const subModal = (item.products?.harga_modal ?? 0) * item.quantity
         const fullTrx = trxList.find(t => t.id === item.transaction_id)
         const diskonTrx = fullTrx?.diskon || 0
         const metode = fullTrx?.payment_method || 'Tunai'
 
-        const totalKotorTrx = fullTrx.total_harga + diskonTrx
+        const totalKotorTrx = (fullTrx?.total_harga ?? 0) + diskonTrx
         const diskonProporsional = totalKotorTrx > 0 ? (item.subtotal / totalKotorTrx) * diskonTrx : 0
         const keuntunganBersihItem = item.subtotal - diskonProporsional - subModal
 
         return [
           waktu,
           item.transaction_id.slice(0, 8),
-          `"${item.products.name}"`,
-          `"${item.products.category || 'Umum'}"`,
+          `"${item.products?.name ?? '—'}"`,
+          `"${item.products?.category || 'Umum'}"`,
           metode,
-          item.products.harga_modal,
-          item.products.harga_jual,
+          item.products?.harga_modal ?? 0,
+          item.products?.harga_jual ?? 0,
           item.quantity,
           item.subtotal,
           diskonProporsional.toFixed(2),
