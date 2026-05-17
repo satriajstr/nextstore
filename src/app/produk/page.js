@@ -342,6 +342,7 @@ export default function Produk() {
     const { error } = await supabase
       .from('products')
       .update(formData)
+      .eq('store_id', profile.store_id)
       .eq('id', modal.product.id)
     if (error) {
       showToast('Gagal menyimpan perubahan.', 'error')
@@ -365,7 +366,11 @@ export default function Produk() {
     })
     if (!confirmed) return
 
-    const { error } = await supabase.from('products').delete().eq('id', product.id)
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('store_id', profile.store_id)
+      .eq('id', product.id)
     if (error) {
       showToast('Gagal menghapus produk.', 'error')
     } else {
