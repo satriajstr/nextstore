@@ -144,7 +144,7 @@ export async function POST(request) {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://nextstore.vercel.app',
+        'HTTP-Referer': 'https://nextstore-kasir.vercel.app',
         'X-Title': 'NextStore AI Business Assistant',
       },
       body: JSON.stringify({
