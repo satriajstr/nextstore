@@ -2,7 +2,7 @@ import "./globals.css";
 import { ThemeProvider } from '../lib/ThemeContext';
 
 export const metadata = {
-  title: "Derashop",
+  title: "NextStore",
   description: "Online Cashier",
 };
 

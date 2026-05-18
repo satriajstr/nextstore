@@ -43,11 +43,11 @@ export default function Kustomisasi() {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
-      
+
       const userProfile = await getUserProfile()
       if (!userProfile) { await supabase.auth.signOut(); router.replace('/login'); return }
       if (userProfile.role === 'kasir') { router.replace('/'); return }
-      
+
       // Fetch current store settings from DB
       const { data: store } = await supabase
         .from('stores')
@@ -60,7 +60,7 @@ export default function Kustomisasi() {
         setSelectedColor(store.primary_color || currentColor)
         setCustomColor(store.primary_color || currentColor)
       }
-      
+
       setCheckingAuth(false)
     }
     checkAuth()
@@ -73,13 +73,13 @@ export default function Kustomisasi() {
     setLoading(true)
 
     const userProfile = await getUserProfile()
-    
+
     // 1. Update Database
     const { error } = await supabase
       .from('stores')
-      .update({ 
-        name: storeName.trim(), 
-        primary_color: activeColor 
+      .update({
+        name: storeName.trim(),
+        primary_color: activeColor
       })
       .eq('id', userProfile.store_id)
 
@@ -149,7 +149,7 @@ export default function Kustomisasi() {
                   value={storeName}
                   onChange={e => setStoreName(e.target.value)}
                   maxLength={30}
-                  placeholder="Contoh: DeraShop"
+                  placeholder="Nama toko baru anda..."
                   className="w-full px-5 py-3.5 rounded-2xl border border-gray-200 bg-gray-50/50 focus:outline-none transition-all text-gray-800 font-semibold text-sm"
                   style={{ '--tw-ring-color': activeColor + '40' }}
                   onFocus={e => e.target.style.borderColor = activeColor}
@@ -187,8 +187,8 @@ export default function Kustomisasi() {
                       onClick={() => { setSelectedColor(preset.value); setCustomColor(preset.value) }}
                       title={preset.name}
                       className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border-2 transition-all group ${selectedColor === preset.value
-                          ? 'border-gray-800 scale-105'
-                          : 'border-transparent hover:border-gray-200'
+                        ? 'border-gray-800 scale-105'
+                        : 'border-transparent hover:border-gray-200'
                         }`}
                     >
                       <div

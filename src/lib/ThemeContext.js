@@ -6,7 +6,7 @@ import { supabase } from './supabase'
 const ThemeContext = createContext({})
 
 export const THEME_DEFAULTS = {
-  storeName: 'DeraShop',
+  storeName: 'NextStore',
   primaryColor: '#ec4899', // pink-500
 }
 
@@ -37,7 +37,7 @@ export function ThemeProvider({ children }) {
   useEffect(() => {
     // Sinkronisasi instan di browser sesaat setelah mount untuk mencegah text & style mismatch
     try {
-      const saved = localStorage.getItem('derashop_theme')
+      const saved = localStorage.getItem('nextstore_theme')
       if (saved) {
         const parsed = JSON.parse(saved)
         if (parsed.storeName) setStoreName(parsed.storeName)
@@ -52,7 +52,7 @@ export function ThemeProvider({ children }) {
       // 2. If NOT logged in, use Local Storage or Defaults
       if (!session) {
         try {
-          const saved = localStorage.getItem('derashop_theme')
+          const saved = localStorage.getItem('nextstore_theme')
           if (saved) {
             const parsed = JSON.parse(saved)
             if (parsed.storeName) setStoreName(parsed.storeName)
@@ -86,7 +86,7 @@ export function ThemeProvider({ children }) {
           if (store.primary_color) setPrimaryColor(store.primary_color)
           
           // Sync to local storage so it persists for the session
-          localStorage.setItem('derashop_theme', JSON.stringify({ 
+          localStorage.setItem('nextstore_theme', JSON.stringify({ 
             storeName: store.name, 
             primaryColor: store.primary_color || primaryColor 
           }))
@@ -108,7 +108,7 @@ export function ThemeProvider({ children }) {
   const saveTheme = ({ storeName: name, primaryColor: color }) => {
     setStoreName(name)
     setPrimaryColor(color)
-    localStorage.setItem('derashop_theme', JSON.stringify({ storeName: name, primaryColor: color }))
+    localStorage.setItem('nextstore_theme', JSON.stringify({ storeName: name, primaryColor: color }))
   }
 
   const rgb = hexToRgbStr(primaryColor)
@@ -185,7 +185,7 @@ export function ThemeProvider({ children }) {
   const themeScript = `
     (function() {
       try {
-        var saved = localStorage.getItem('derashop_theme');
+        var saved = localStorage.getItem('nextstore_theme');
         if (saved) {
           var parsed = JSON.parse(saved);
           var color = parsed.primaryColor;
