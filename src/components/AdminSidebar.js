@@ -51,6 +51,7 @@ export default function AdminSidebar() {
   const { storeName, primaryColor } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [showChangePassword, setShowChangePassword] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [pwLoading, setPwLoading] = useState(false)
@@ -70,9 +71,26 @@ export default function AdminSidebar() {
     setPwLoading(true)
     setPwMessage(null)
     try {
+      // 1. Dapatkan user email
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Sesi tidak ditemukan. Silakan login ulang.')
+
+      // 2. Verifikasi password saat ini
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+      })
+
+      if (signInError) {
+        throw new Error('Password lama salah.')
+      }
+
+      // 3. Update ke password baru
       const { error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
+      
       setPwMessage({ type: 'success', text: 'Password berhasil diubah!' })
+      setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
       setTimeout(() => { setShowChangePassword(false); setPwMessage(null) }, 2000)
@@ -210,7 +228,7 @@ export default function AdminSidebar() {
           <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-5 animate-fade-in">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-bold text-gray-800">Ganti Password Admin</h3>
-              <button onClick={() => { setShowChangePassword(false); setPwMessage(null); setNewPassword(''); setConfirmPassword('') }} className="text-gray-300 hover:text-gray-500 text-2xl">×</button>
+              <button onClick={() => { setShowChangePassword(false); setPwMessage(null); setCurrentPassword(''); setNewPassword(''); setConfirmPassword('') }} className="text-gray-300 hover:text-gray-500 text-2xl">×</button>
             </div>
             {pwMessage && (
               <div className={`p-3 rounded-xl text-sm font-medium flex items-center gap-2 ${pwMessage.type === 'success' ? 'bg-green-50 text-green-600 border border-green-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
@@ -227,6 +245,10 @@ export default function AdminSidebar() {
               </div>
             )}
             <form onSubmit={handleChangePassword} className="flex flex-col gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">Password Lama</label>
+                <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required placeholder="Password saat ini" className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm font-medium transition-all" />
+              </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">Password Baru</label>
                 <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required placeholder="Minimal 6 karakter" className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm font-medium transition-all" />

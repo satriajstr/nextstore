@@ -11,25 +11,26 @@ import { useTheme } from '../lib/ThemeContext'
 function Toast({ toast, onClose }) {
   if (!toast) return null
   const isSuccess = toast.type === 'success'
-  return (
-    <div className={`fixed top-6 right-6 z-50 max-w-sm w-full shadow-2xl rounded-2xl p-5 flex items-start gap-4 animate-fade-in
-      ${isSuccess ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-      {isSuccess ? (
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+  
+  if (isSuccess) {
+    return (
+      <div className="fixed top-6 right-6 z-50 shadow-xl rounded-2xl py-3 px-5 bg-green-50 border border-green-200 text-green-700 font-bold text-sm flex items-center gap-2 animate-fade-in">
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
         </svg>
-      ) : (
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-        </svg>
-      )}
+        <span>{toast.message}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed top-6 right-6 z-50 max-w-sm w-full shadow-2xl rounded-2xl p-5 flex items-start gap-4 animate-fade-in bg-red-50 border border-red-200">
+      <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+      </svg>
       <div className="flex-1">
-        <p className={`font-semibold text-sm ${isSuccess ? 'text-green-800' : 'text-red-800'}`}>
-          {isSuccess ? 'Berhasil' : 'Gagal'}
-        </p>
-        <p className={`text-sm mt-0.5 ${isSuccess ? 'text-green-700' : 'text-red-700'}`}>
-          {toast.message}
-        </p>
+        <p className="font-semibold text-sm text-red-800">Gagal</p>
+        <p className="text-sm mt-0.5 text-red-700">{toast.message}</p>
       </div>
       <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
     </div>
@@ -96,9 +97,10 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false)
   const [enableManualInput, setEnableManualInput] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('pos_enable_manual_input') === 'true'
+      const stored = localStorage.getItem('pos_enable_manual_input')
+      return stored !== 'false'
     }
-    return false
+    return true
   })
 
   const toggleManualInput = (val) => {
@@ -111,10 +113,27 @@ export default function Home() {
   // Logout & Password States
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const [showChangePassword, setShowChangePassword] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [pwLoading, setPwLoading] = useState(false)
   const [pwMessage, setPwMessage] = useState(null)
+
+  // Category Filter States
+  const [showCategoryFilter, setShowCategoryFilter] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('pos_show_category_filter')
+      return stored !== 'false'
+    }
+    return true
+  })
+
+  const toggleCategoryFilter = (val) => {
+    setShowCategoryFilter(val)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pos_show_category_filter', val ? 'true' : 'false')
+    }
+  }
 
   // Swipe & Animation Management
   const touchStart = useRef(0)
@@ -127,7 +146,8 @@ export default function Home() {
 
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type })
-    setTimeout(() => setToast(null), 4000)
+    const duration = type === 'success' ? 1000 : 4000
+    setTimeout(() => setToast(null), duration)
   }, [])
 
   // 1. Fetch Products
@@ -288,6 +308,8 @@ export default function Home() {
       setSelectedQuickCash(null)
       setShowCheckoutModal(false)
       setShowFullCart(false)
+      setSearchTerm('')
+      setSelectedCategory('Semua')
       await getData()
       showToast('Transaksi berhasil!', 'success')
 
@@ -361,9 +383,26 @@ export default function Home() {
     setPwLoading(true)
     setPwMessage(null)
     try {
+      // 1. Dapatkan user email
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Sesi tidak ditemukan. Silakan login ulang.')
+
+      // 2. Verifikasi password saat ini
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+      })
+
+      if (signInError) {
+        throw new Error('Password lama salah.')
+      }
+
+      // 3. Update ke password baru
       const { error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
+
       setPwMessage({ type: 'success', text: 'Password berhasil diubah!' })
+      setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
       setTimeout(() => { setShowChangePassword(false); setPwMessage(null) }, 2000)
@@ -410,7 +449,7 @@ export default function Home() {
           <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-5 animate-fade-in">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-bold text-gray-800">Ganti Password</h3>
-              <button onClick={() => { setShowChangePassword(false); setPwMessage(null); setNewPassword(''); setConfirmPassword('') }} className="text-gray-300 hover:text-gray-500 text-2xl">×</button>
+              <button onClick={() => { setShowChangePassword(false); setPwMessage(null); setCurrentPassword(''); setNewPassword(''); setConfirmPassword('') }} className="text-gray-300 hover:text-gray-500 text-2xl">×</button>
             </div>
             {pwMessage && (
               <div className={`p-3 rounded-xl text-sm font-medium ${pwMessage.type === 'success' ? 'bg-green-50 text-green-600 border border-green-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
@@ -429,6 +468,10 @@ export default function Home() {
               </div>
             )}
             <form onSubmit={handleChangePassword} className="flex flex-col gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">Password Lama</label>
+                <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required placeholder="Password saat ini" className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm font-medium transition-all" />
+              </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">Password Baru</label>
                 <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required placeholder="Minimal 6 karakter" className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm font-medium transition-all" />
@@ -516,7 +559,18 @@ export default function Home() {
               <div className="space-y-4">
                 {/* Input Received */}
                 <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2 px-1">Uang Diterima</label>
+                  <div className="flex justify-between items-center mb-2 px-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Uang Diterima</label>
+                    <button
+                      onClick={() => toggleManualInput(!enableManualInput)}
+                      className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 hover:text-pink-500 transition-colors uppercase tracking-widest"
+                    >
+                      <span>Input Manual</span>
+                      <span className={`w-7 h-4 rounded-full transition-colors flex items-center p-0.5 ${enableManualInput ? 'bg-pink-500 justify-end' : 'bg-gray-200 justify-start'}`}>
+                        <span className="w-3 h-3 bg-white rounded-full shadow-sm"></span>
+                      </span>
+                    </button>
+                  </div>
                   {enableManualInput ? (
                     <div className="w-full px-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl text-2xl font-bold text-gray-800 flex items-center gap-2">
                       <span className="text-gray-400 text-sm font-bold">Rp</span>
@@ -685,21 +739,22 @@ export default function Home() {
                               <span>BESAR</span>
                             </div>
                           </div>
+
+                          {/* Category Filter Toggle */}
+                          <div className="space-y-2 pt-4 border-t border-gray-100 mt-3">
+                            <div className="flex justify-between items-center">
+                              <label className="text-[11px] font-bold text-gray-600 block">Tampilkan Kategori</label>
+                              <button
+                                onClick={() => toggleCategoryFilter(!showCategoryFilter)}
+                                className={`w-10 h-6 rounded-full transition-colors flex items-center p-0.5 ${showCategoryFilter ? 'bg-pink-500 justify-end' : 'bg-gray-200 justify-start'}`}
+                              >
+                                <span className="w-5 h-5 bg-white rounded-full shadow-sm"></span>
+                              </button>
+                            </div>
+                            <p className="text-[9px] text-gray-400 font-medium leading-normal">Menampilkan tab filter kategori di bawah bar pencarian</p>
+                          </div>
                         </div>
 
-                        {/* Manual Input Setting */}
-                        <div className="space-y-2 pt-4 border-t border-gray-100 mt-3">
-                          <div className="flex justify-between items-center">
-                            <label className="text-[11px] font-bold text-gray-600 block">Input Manual Uang</label>
-                            <button
-                              onClick={() => toggleManualInput(!enableManualInput)}
-                              className={`w-10 h-6 rounded-full transition-colors flex items-center p-0.5 ${enableManualInput ? 'bg-pink-500 justify-end' : 'bg-gray-200 justify-start'}`}
-                            >
-                              <span className="w-5 h-5 bg-white rounded-full shadow-sm"></span>
-                            </button>
-                          </div>
-                          <p className="text-[9px] text-gray-400 font-medium leading-normal">Bisa mengetik nominal manual secara bebas di kasir</p>
-                        </div>
 
                         {/* Change Password in Settings */}
                         <div className="pt-4 border-t border-gray-100 mt-1">
@@ -752,6 +807,23 @@ export default function Home() {
                   </button>
                 )}
               </div>
+
+              {showCategoryFilter && (
+                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1 mt-1">
+                  {categoriesList.map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`px-4 py-2 rounded-2xl text-[11px] font-bold transition-all whitespace-nowrap active:scale-95 border shadow-sm
+                        ${selectedCategory === cat
+                          ? 'bg-pink-500 text-white border-pink-500 shadow-pink-100'
+                          : 'bg-white text-gray-500 border-gray-100 active:bg-gray-50'}`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
 
             </header>
           </div>
@@ -856,12 +928,27 @@ export default function Home() {
                 </div>
               ) : (
                 cart.map((item) => (
-                  <div key={item.id} className="flex justify-between items-center group animate-slide-in">
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-800 text-sm leading-tight mb-1">{item.name}</h4>
-                      <p className="text-xs text-pink-500 font-semibold">
-                        {formatIDR(item.harga_jual)} × {item.quantity}
-                      </p>
+                  <div key={item.id} className="flex justify-between items-center group animate-slide-in gap-2 border-b border-gray-100/50 pb-4 last:border-b-0 last:pb-0">
+                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                      <button
+                        disabled={processing}
+                        onClick={() => {
+                          setCart(prev => prev.filter(cartItem => cartItem.id !== item.id))
+                        }}
+                        className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all rounded-lg flex-shrink-0"
+                        title="Hapus item dari keranjang"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                        </svg>
+                      </button>
+                      <div className="w-px h-6 bg-gray-100 flex-shrink-0"></div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-gray-800 text-sm leading-tight mb-1 truncate">{item.name}</h4>
+                        <p className="text-xs text-pink-500 font-semibold">
+                          {formatIDR(item.harga_jual)} × {item.quantity}
+                        </p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-3">
                       <button
@@ -977,6 +1064,15 @@ export default function Home() {
           </button>
         </div>
       )}
+      <style>{`
+        .scrollbar-none::-webkit-scrollbar {
+          display: none;
+        }
+        .scrollbar-none {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </>
   )
 }
