@@ -14,7 +14,15 @@ function Toast({ toast, onClose }) {
   return (
     <div className={`fixed top-6 right-6 z-50 max-w-sm w-full shadow-2xl rounded-2xl p-5 flex items-start gap-4 animate-fade-in
       ${isSuccess ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-      <span className="text-2xl">{isSuccess ? '✅' : '❌'}</span>
+      {isSuccess ? (
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+      ) : (
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+        </svg>
+      )}
       <div className="flex-1">
         <p className={`font-semibold text-sm ${isSuccess ? 'text-green-800' : 'text-red-800'}`}>
           {isSuccess ? 'Berhasil' : 'Gagal'}
@@ -23,7 +31,7 @@ function Toast({ toast, onClose }) {
           {toast.message}
         </p>
       </div>
-      <button onClose={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
+      <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
     </div>
   )
 }
@@ -31,10 +39,18 @@ function Toast({ toast, onClose }) {
 // ─── Confirm Dialog Component ─────────────────────────────────────────────────
 function ConfirmDialog({ confirm, onYes, onNo }) {
   if (!confirm) return null
+  let iconElement = null
+  if (confirm.icon === '🗑️') {
+    iconElement = (
+      <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-red-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+      </svg>
+    )
+  }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 flex flex-col gap-5 animate-fade-in">
-        <div className="text-3xl">{confirm.icon ?? '❓'}</div>
+        {iconElement && <div>{iconElement}</div>}
         <div>
           <p className="font-bold text-gray-800 text-lg">{confirm.title ?? 'Konfirmasi'}</p>
           <p className="text-gray-500 text-sm mt-1 whitespace-pre-line font-medium">{confirm.message}</p>
@@ -97,7 +113,7 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
         <div className="flex justify-between items-center border-b border-gray-50 pb-4">
           <div>
             <h2 className="text-xl font-bold text-gray-800">
-              {mode === 'add' ? '➕ Tambah Produk' : '✏️ Edit Produk'}
+              {mode === 'add' ? 'Tambah Produk' : 'Edit Produk'}
             </h2>
             <p className="text-xs text-gray-400 mt-0.5 font-medium">
               {mode === 'add' ? 'Masukkan data produk baru' : `Mengedit: ${product?.name}`}
@@ -520,26 +536,55 @@ export default function Produk() {
                 />
                 <button
                   onClick={() => setModal({ mode: 'add' })}
-                  className="px-4 py-2.5 bg-pink-500 text-white font-bold rounded-xl hover:bg-pink-600 transition-all active:scale-95 shadow-lg shadow-pink-100 text-sm whitespace-nowrap"
+                  className="px-4 py-2.5 bg-pink-500 text-white font-bold rounded-xl hover:bg-pink-600 transition-all active:scale-95 shadow-lg shadow-pink-100 text-sm whitespace-nowrap flex items-center gap-1.5"
                 >
-                  ＋ Tambah
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                  <span>Tambah</span>
                 </button>
               </div>
             </header>
 
             {/* SUMMARY STATS */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 pt-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8 pt-4">
               {[
-                { label: 'Total Produk', value: filtered.length, icon: '📦' },
-                { label: 'Stok Kritis (≤3)', value: filtered.filter(p => (p.stock ?? 0) <= 3).length, icon: '⚠️' },
-                { label: 'Total Nilai Stok', value: formatIDR(filtered.reduce((a, p) => a + (p.harga_modal * (p.stock ?? 0)), 0)), icon: '💰' },
-              ].map((stat) => (
-                <div key={stat.label} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm transition-all hover:shadow-md">
-                  <p className="text-2xl mb-2">{stat.icon}</p>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1">{stat.label}</p>
-                  <p className="text-xl font-bold text-gray-800 tracking-tight">{stat.value}</p>
-                </div>
-              ))}
+                { label: 'Total Produk', value: filtered.length, type: 'total' },
+                { label: 'Stok Kritis (≤3)', value: filtered.filter(p => (p.stock ?? 0) <= 3).length, type: 'critical' },
+                { label: 'Total Nilai Stok', value: formatIDR(filtered.reduce((a, p) => a + (p.harga_modal * (p.stock ?? 0)), 0)), type: 'value' },
+              ].map((stat) => {
+                const getStatIcon = (type) => {
+                  if (type === 'total') {
+                    return (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-pink-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                      </svg>
+                    )
+                  }
+                  if (type === 'critical') {
+                    return (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                      </svg>
+                    )
+                  }
+                  if (type === 'value') {
+                    return (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5M3 13.75h18" />
+                      </svg>
+                    )
+                  }
+                  return null
+                }
+                return (
+                  <div key={stat.label} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm transition-all hover:shadow-md">
+                    <div className="mb-2">{getStatIcon(stat.type)}</div>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1">{stat.label}</p>
+                    <p className="text-xl font-bold text-gray-800 tracking-tight">{stat.value}</p>
+                  </div>
+                )
+              })}
             </div>
 
             {/* PRODUCT TABLE */}
@@ -549,9 +594,12 @@ export default function Produk() {
                 {products.length > 0 && (
                   <button
                     onClick={exportProductsCSV}
-                    className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded-xl hover:bg-green-600 transition-all shadow-md shadow-green-100 flex items-center gap-2"
+                    className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded-xl hover:bg-green-600 transition-all shadow-md shadow-green-100 flex items-center gap-1.5"
                   >
-                    ⬇ Export CSV
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                    <span>Export CSV</span>
                   </button>
                 )}
               </div>
@@ -563,8 +611,10 @@ export default function Produk() {
                   </div>
                 ) : filtered.length === 0 ? (
                   <div className="p-16 text-center text-gray-300">
-                    <span className="text-4xl block mb-3 opacity-30">📭</span>
-                    <p className="font-medium">Belum ada produk yang cocok, nih.</p>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                    </svg>
+                    <p className="font-medium text-gray-400">Belum ada produk yang cocok, nih.</p>
                   </div>
                 ) : (
                   <table className="w-full text-left border-collapse">
@@ -597,9 +647,14 @@ export default function Produk() {
                             </td>
 
                             <td className="px-6 py-5 text-center">
-                              <span className={`text-sm font-semibold px-3 py-1 rounded-lg
+                              <span className={`text-sm font-semibold px-3 py-1 rounded-lg flex items-center justify-center gap-1 w-fit mx-auto
                               ${isLowStock ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>
-                                {isLowStock && '⚠️ '}{product.stock ?? 0}
+                                {isLowStock && (
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-red-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                                  </svg>
+                                )}
+                                {product.stock ?? 0}
                               </span>
                             </td>
                             <td className="px-6 py-5 text-center">

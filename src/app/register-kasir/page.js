@@ -75,12 +75,14 @@ export default function RegisterKasir() {
       <div className="relative max-w-md w-full">
         <div className="bg-white rounded-[2.5rem] shadow-xl p-10 md:p-12 border border-gray-100 animate-fade-in">
           <div className="text-center mb-10">
-            <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl shadow-lg mx-auto mb-5"
+            <div className="w-20 h-20 rounded-3xl flex items-center justify-center shadow-lg mx-auto mb-5"
               style={{
                 backgroundColor: primaryColor,
                 boxShadow: `0 10px 25px ${primaryColor}40`
               }}>
-              🧑‍💻
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              </svg>
             </div>
             <h1 className="text-3xl font-black text-gray-800 tracking-tighter">Daftar Kasir</h1>
             <p className="text-gray-400 text-xs font-bold uppercase tracking-[0.2em] mt-1.5" style={{ color: primaryColor }}>
@@ -90,7 +92,9 @@ export default function RegisterKasir() {
 
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-2xl font-medium flex items-center gap-3">
-              <span>⚠️</span>
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
               <span>{error}</span>
             </div>
           )}

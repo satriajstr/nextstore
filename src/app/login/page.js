@@ -119,13 +119,15 @@ export default function Login() {
 
           {/* Logo */}
           <div className="text-center mb-10">
-            <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl shadow-lg mx-auto mb-5"
+            <div className="w-20 h-20 rounded-3xl flex items-center justify-center shadow-lg mx-auto mb-5"
               style={{
                 animation: 'floatBounce 3s ease-in-out infinite',
                 background: `linear-gradient(135deg, ${SYSTEM_COLOR}, #8b5cf6)`,
                 boxShadow: `0 10px 25px ${SYSTEM_COLOR}40`
               }}>
-              🏬
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.015a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .414.336.75.75.75z" />
+              </svg>
             </div>
             <h1 className="text-3xl font-black text-gray-800 tracking-tighter">{SYSTEM_NAME}</h1>
             <p className="text-xs font-bold uppercase tracking-[0.2em] mt-1.5" style={{ color: SYSTEM_COLOR }}>
@@ -137,7 +139,9 @@ export default function Login() {
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-2xl font-medium flex items-center gap-3"
               style={{ animation: 'shake 0.3s ease-in-out' }}>
-              <span className="text-base">⚠️</span>
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
               <span>{error}</span>
             </div>
           )}
@@ -145,17 +149,25 @@ export default function Login() {
           {/* Forgot Password Modal */}
           {showForgotPassword ? (
             <div className="flex flex-col gap-5">
-              <div className="text-center mb-2">
-                <p className="text-lg font-bold text-gray-700">🔑 Lupa Password?</p>
-                <p className="text-xs text-gray-400 mt-1">Masukkan email Anda, kami akan mengirim link reset password.</p>
-              </div>
+            <div className="text-center mb-2">
+              <p className="text-lg font-bold text-gray-700">Lupa Password?</p>
+              <p className="text-xs text-gray-400 mt-1">Masukkan email Anda, kami akan mengirim link reset password.</p>
+            </div>
 
-              {resetMessage && (
-                <div className={`p-4 rounded-2xl text-sm font-medium flex items-center gap-3 ${resetMessage.type === 'success' ? 'bg-green-50 border border-green-100 text-green-600' : 'bg-red-50 border border-red-100 text-red-600'}`}>
-                  <span>{resetMessage.type === 'success' ? '✅' : '⚠️'}</span>
-                  <span>{resetMessage.text}</span>
-                </div>
-              )}
+            {resetMessage && (
+              <div className={`p-4 rounded-2xl text-sm font-medium flex items-center gap-3 ${resetMessage.type === 'success' ? 'bg-green-50 border border-green-100 text-green-600' : 'bg-red-50 border border-red-100 text-red-600'}`}>
+                {resetMessage.type === 'success' ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                  </svg>
+                )}
+                <span>{resetMessage.text}</span>
+              </div>
+            )}
 
               <form onSubmit={handleResetPassword} className="flex flex-col gap-4">
                 <div>
