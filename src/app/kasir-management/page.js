@@ -38,7 +38,7 @@ export default function KasirManagement() {
     setLoading(true)
     const { data, error } = await supabase
       .from('profiles')
-      .select('user_id, role, store_id, status')
+      .select('user_id, role, store_id, status, full_name')
       .eq('store_id', profile.store_id)
       .eq('role', 'kasir')
 
@@ -192,6 +192,7 @@ export default function KasirManagement() {
                 <table className="w-full text-left">
                   <thead>
                     <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50">
+                      <th className="px-6 py-4">Nama Kasir</th>
                       <th className="px-6 py-4">ID Kasir</th>
                       <th className="px-6 py-4">Status</th>
                       <th className="px-6 py-4 text-center">Aksi</th>
@@ -201,7 +202,10 @@ export default function KasirManagement() {
                     {cashiers.map((ksr) => (
                       <tr key={ksr.user_id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4">
-                          <p className="font-mono text-xs text-gray-600">{ksr.user_id.slice(0, 8)}...</p>
+                          <p className="font-semibold text-gray-700 text-sm">{ksr.full_name || <span className="text-gray-300 italic">Belum diisi</span>}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="font-mono text-xs text-gray-400">{ksr.user_id.slice(0, 8)}...</p>
                         </td>
                         <td className="px-6 py-4">
                           <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-widest

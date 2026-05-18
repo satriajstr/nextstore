@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from '../lib/auth'
+import { supabase } from '../lib/supabase'
 import { useTheme } from '../lib/ThemeContext'
 import { useState } from 'react'
 
@@ -49,15 +50,49 @@ export default function AdminSidebar() {
   const pathname = usePathname()
   const { storeName, primaryColor } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [pwLoading, setPwLoading] = useState(false)
+  const [pwMessage, setPwMessage] = useState(null)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault()
+    if (newPassword.length < 6) {
+      setPwMessage({ type: 'error', text: 'Password minimal 6 karakter.' })
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPwMessage({ type: 'error', text: 'Password dan konfirmasi tidak cocok.' })
+      return
+    }
+    setPwLoading(true)
+    setPwMessage(null)
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) throw error
+      setPwMessage({ type: 'success', text: 'Password berhasil diubah!' })
+      setNewPassword('')
+      setConfirmPassword('')
+      setTimeout(() => { setShowChangePassword(false); setPwMessage(null) }, 2000)
+    } catch (err) {
+      setPwMessage({ type: 'error', text: err.message })
+    } finally {
+      setPwLoading(false)
+    }
+  }
 
   return (
     <>
       {/* ── Mobile Top Bar ─────────────────────────────────── */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 shadow-sm">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center text-base shadow-md flex-shrink-0"
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-md flex-shrink-0"
             style={{ backgroundColor: primaryColor }}>
-            🛍️
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.015a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .414.336.75.75.75z" />
+            </svg>
           </div>
           <span className="font-black text-gray-800 tracking-tight text-base">{storeName}</span>
         </div>
@@ -98,9 +133,11 @@ export default function AdminSidebar() {
         {/* Brand */}
         <div className="p-6 border-b border-gray-50">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shadow-lg flex-shrink-0"
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-white shadow-lg flex-shrink-0"
               style={{ backgroundColor: primaryColor, boxShadow: `0 4px 14px ${primaryColor}50` }}>
-              🛍️
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.015a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .414.336.75.75.75z" />
+              </svg>
             </div>
             <div className="min-w-0">
               <h1 className="font-black text-gray-800 tracking-tight leading-none text-lg truncate">{storeName}</h1>
@@ -145,9 +182,18 @@ export default function AdminSidebar() {
         </nav>
 
         {/* Logout Footer */}
-        <div className="p-4 border-t border-gray-50">
+        <div className="p-4 border-t border-gray-50 space-y-2">
           <button
-            onClick={signOut}
+            onClick={() => setShowChangePassword(true)}
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-sm font-semibold text-amber-500 hover:bg-amber-50 hover:text-amber-600 transition-all group"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+            </svg>
+            <span>Ganti Password</span>
+          </button>
+          <button
+            onClick={() => setShowLogoutConfirm(true)}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold text-red-400 hover:bg-red-50 hover:text-red-600 transition-all group"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 transition-colors" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
@@ -157,6 +203,64 @@ export default function AdminSidebar() {
           </button>
         </div>
       </aside>
+
+      {/* CHANGE PASSWORD MODAL */}
+      {showChangePassword && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-5 animate-fade-in">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-bold text-gray-800">Ganti Password Admin</h3>
+              <button onClick={() => { setShowChangePassword(false); setPwMessage(null); setNewPassword(''); setConfirmPassword('') }} className="text-gray-300 hover:text-gray-500 text-2xl">×</button>
+            </div>
+            {pwMessage && (
+              <div className={`p-3 rounded-xl text-sm font-medium flex items-center gap-2 ${pwMessage.type === 'success' ? 'bg-green-50 text-green-600 border border-green-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
+                {pwMessage.type === 'success' ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                  </svg>
+                )}
+                <span>{pwMessage.text}</span>
+              </div>
+            )}
+            <form onSubmit={handleChangePassword} className="flex flex-col gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">Password Baru</label>
+                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required placeholder="Minimal 6 karakter" className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm font-medium transition-all" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">Konfirmasi Password</label>
+                <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required placeholder="Ketik ulang password baru" className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm font-medium transition-all" />
+              </div>
+              <button type="submit" disabled={pwLoading} className="w-full py-3 rounded-xl text-white font-bold transition-all active:scale-95 shadow-lg disabled:opacity-50 text-sm" style={{ backgroundColor: primaryColor, boxShadow: `0 4px 12px ${primaryColor}40` }}>
+                {pwLoading ? 'Menyimpan...' : 'Simpan Password Baru'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* LOGOUT CONFIRMATION MODAL */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-5 animate-fade-in text-center">
+            <div className="mx-auto text-red-500 mb-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-gray-800">Keluar dari Admin Panel?</h3>
+            <p className="text-gray-500 text-sm">Anda akan logout dari sesi admin. Pastikan semua perubahan sudah tersimpan.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-600 font-semibold hover:bg-gray-200 transition-all text-sm">Batal</button>
+              <button onClick={() => { setShowLogoutConfirm(false); signOut() }} className="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 transition-all active:scale-95 shadow-lg shadow-red-100 text-sm">Ya, Logout</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
