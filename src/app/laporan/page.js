@@ -3,6 +3,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
+import { getUserProfile, getRole } from '../../lib/auth'
+import { useRouter } from 'next/navigation'
+import AdminSidebar from '../../components/AdminSidebar'
 
 // ─── Custom Toast Component ──────────────────────────────────────────────────
 function Toast({ toast, onClose }) {
@@ -57,6 +60,42 @@ function ConfirmDialog({ confirm, onYes, onNo }) {
 }
 
 export default function Laporan() {
+  const router = useRouter()
+  const [profile, setProfile] = useState(null)
+  const [role, setRole] = useState(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.replace('/login')
+        return
+      }
+      const userProfile = await getUserProfile()
+      if (!userProfile) {
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
+
+      if (userProfile.role === 'kasir') {
+        router.replace('/')
+        return
+      }
+
+      if (userProfile.role !== 'admin') {
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
+
+      setProfile(userProfile)
+      setRole(userProfile.role)
+      setCheckingAuth(false)
+    }
+    checkAuth()
+  }, [router])
   const [transactions, setTransactions] = useState([])
   const [totalHariIni, setTotalHariIni] = useState(0)
   const [totalCash, setTotalCash] = useState(0)
@@ -92,7 +131,8 @@ export default function Laporan() {
   }
 
   // ─── Data Fetching ─────────────────────────────────────────────────────────
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
+    if (!profile?.store_id) return
     setLoading(true)
     const todayStr = new Date().toISOString().split('T')[0]
     const { data, error } = await supabase
@@ -104,6 +144,7 @@ export default function Laporan() {
           products ( name )
         )
       `)
+      .eq('store_id', profile.store_id)
       .gte('created_at', todayStr)
       .order('created_at', { ascending: false })
 
@@ -120,36 +161,45 @@ export default function Laporan() {
       setTotalQRIS(qris)
     }
     setLoading(false)
-  }
+  }, [profile?.store_id])
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
+    if (!profile?.store_id) return
     const { data } = await supabase
       .from('daily_summary')
       .select('*')
+      .eq('store_id', profile.store_id)
       .order('date', { ascending: false })
     if (data) setHistory(data)
-  }
+  }, [profile?.store_id])
 
-  const checkStatus = async () => {
+  const checkStatus = useCallback(async () => {
+    if (!profile?.store_id) return
     const today = new Date().toISOString().split('T')[0]
     const { data } = await supabase
       .from('daily_summary')
       .select('status')
+      .eq('store_id', profile.store_id)
       .eq('date', today)
       .maybeSingle()
     setIsClosed(data?.status === 'closed')
-  }
+  }, [profile?.store_id])
 
   useEffect(() => {
     fetchTransactions()
     checkStatus()
     fetchHistory()
-  }, [])
+  }, [fetchTransactions, checkStatus, fetchHistory])
 
   // ─── Batal Transaksi ──────────────────────────────────────────────────────
   const handleVoidTransaction = async (trx) => {
     if (isClosed) {
       showToast('Tidak bisa membatalkan transaksi pada hari yang sudah ditutup.\nBuka hari terlebih dahulu.', 'error')
+      return
+    }
+
+    if (!profile?.store_id) {
+      showToast('Gagal membatalkan transaksi: Toko tidak teridentifikasi.', 'error')
       return
     }
 
@@ -169,6 +219,7 @@ export default function Laporan() {
       const { data: items, error: fetchErr } = await supabase
         .from('transaction_items')
         .select('product_id, quantity')
+        .eq('store_id', profile.store_id)
         .eq('transaction_id', trx.id)
 
       if (fetchErr) throw fetchErr
@@ -178,6 +229,7 @@ export default function Laporan() {
         const { data: product } = await supabase
           .from('products')
           .select('stock')
+          .eq('store_id', profile.store_id)
           .eq('id', item.product_id)
           .single()
 
@@ -185,14 +237,23 @@ export default function Laporan() {
           await supabase
             .from('products')
             .update({ stock: (product.stock || 0) + item.quantity })
+            .eq('store_id', profile.store_id)
             .eq('id', item.product_id)
         }
       }
 
       // 3. Hapus transaksi (Hapus items dulu untuk menghindari error foreign key)
-      await supabase.from('transaction_items').delete().eq('transaction_id', trx.id)
+      await supabase
+        .from('transaction_items')
+        .delete()
+        .eq('store_id', profile.store_id)
+        .eq('transaction_id', trx.id)
 
-      const { error: deleteErr } = await supabase.from('transactions').delete().eq('id', trx.id)
+      const { error: deleteErr } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('store_id', profile.store_id)
+        .eq('id', trx.id)
 
       if (deleteErr) throw deleteErr
 
@@ -208,10 +269,19 @@ export default function Laporan() {
   const handleCloseDay = async () => {
     if (isClosed) return
 
+    if (!profile?.store_id) {
+      showToast('Gagal tutup hari: Toko tidak teridentifikasi.', 'error')
+      return
+    }
+
     if (transactions.length === 0) {
       const today = new Date().toISOString().split('T')[0]
       const { data: existing } = await supabase
-        .from('daily_summary').select('carry_over').eq('date', today).maybeSingle()
+        .from('daily_summary')
+        .select('carry_over')
+        .eq('store_id', profile.store_id)
+        .eq('date', today)
+        .maybeSingle()
       if (!existing || existing.carry_over === 0) {
         showToast('Belum ada transaksi untuk ditutup.', 'error')
         return
@@ -234,6 +304,7 @@ export default function Laporan() {
       const { data: existing } = await supabase
         .from('daily_summary')
         .select('carry_over, carry_modal, carry_diskon, carry_trx_count')
+        .eq('store_id', profile.store_id)
         .eq('date', today)
         .maybeSingle()
 
@@ -252,7 +323,7 @@ export default function Laporan() {
           .in('transaction_id', transactions.map(t => t.id))
         if (itemErr) throw itemErr
         items.forEach(item => {
-          modalSesi += item.products.harga_modal * item.quantity
+          modalSesi += (item.products?.harga_modal ?? 0) * item.quantity
         })
       }
 
@@ -266,6 +337,7 @@ export default function Laporan() {
         .from('daily_summary')
         .upsert({
           date: today,
+          store_id: profile.store_id,
           total_penjualan: totalPenjualan,
           jumlah_transaksi: jumlahTrx,
           total_modal: totalModal,
@@ -276,7 +348,7 @@ export default function Laporan() {
           carry_modal: carryModal,
           carry_diskon: carryDiskon,
           carry_trx_count: carryTrxCount
-        }, { onConflict: 'date' })
+        }, { onConflict: 'date, store_id' })
 
       if (error) throw error
 
@@ -296,7 +368,7 @@ export default function Laporan() {
 
     } catch (err) {
       console.error("CLOSE DAY ERROR:", err)
-      showToast('Gagal tutup hari. Periksa koneksi database.', 'error')
+      showToast(`Gagal tutup hari: ${err.message || 'Periksa koneksi database.'}`, 'error')
     } finally {
       setClosing(false)
     }
@@ -304,6 +376,11 @@ export default function Laporan() {
 
   // ─── Buka Hari ───────────────────────────────────────────────────────────
   const handleOpenDay = async () => {
+    if (!profile?.store_id) {
+      showToast('Gagal membuka hari: Toko tidak teridentifikasi.', 'error')
+      return
+    }
+
     const confirmed = await showConfirm({
       icon: '🔓',
       title: 'Buka Kembali Hari Ini?',
@@ -326,11 +403,14 @@ export default function Laporan() {
 
     try {
       if (resetData) {
-        const { data: currentSummary } = await supabase
+        const { data: currentSummary, error: summaryErr } = await supabase
           .from('daily_summary')
           .select('total_penjualan, total_modal, total_diskon, jumlah_transaksi')
+          .eq('store_id', profile.store_id)
           .eq('date', today)
           .single()
+
+        if (summaryErr) throw summaryErr
 
         await supabase
           .from('daily_summary')
@@ -341,6 +421,7 @@ export default function Laporan() {
             carry_diskon: currentSummary?.total_diskon ?? 0,
             carry_trx_count: currentSummary?.jumlah_transaksi ?? 0
           })
+          .eq('store_id', profile.store_id)
           .eq('date', today)
 
         const { error: itemsErr } = await supabase
@@ -352,15 +433,19 @@ export default function Laporan() {
         const { error: trxErr } = await supabase
           .from('transactions')
           .delete()
+          .eq('store_id', profile.store_id)
           .gte('created_at', today)
         if (trxErr) throw trxErr
 
         showToast('Hari dibuka. Transaksi direset. Penjualan baru akan diakumulasi.', 'success')
       } else {
-        await supabase
+        const { error: updateErr } = await supabase
           .from('daily_summary')
           .update({ status: 'open' })
+          .eq('store_id', profile.store_id)
           .eq('date', today)
+
+        if (updateErr) throw updateErr
 
         showToast('Hari dibuka kembali. Data penjualan tetap ada.', 'success')
       }
@@ -370,7 +455,7 @@ export default function Laporan() {
       fetchHistory()
     } catch (err) {
       console.error("OPEN DAY ERROR:", err)
-      showToast('Terjadi kesalahan saat membuka hari.', 'error')
+      showToast(`Terjadi kesalahan saat membuka hari: ${err.message || ''}`, 'error')
     }
   }
 
@@ -405,11 +490,17 @@ export default function Laporan() {
 
   // Export CSV detail per item transaksi untuk tanggal tertentu
   const exportDailyDetailCSV = async (dateStr) => {
+    if (!profile?.store_id) {
+      showToast('Gagal ekspor: Toko tidak teridentifikasi.', 'error')
+      return
+    }
+
     try {
       // 1. Ambil semua transaksi pada tanggal tersebut
       const { data: trxList, error: trxErr } = await supabase
         .from('transactions')
         .select('id, created_at, total_harga, diskon, payment_method')
+        .eq('store_id', profile.store_id)
         .gte('created_at', dateStr)
         .lt('created_at', new Date(new Date(dateStr).getTime() + 86400000).toISOString().split('T')[0])
         .order('created_at', { ascending: true })
@@ -457,23 +548,23 @@ export default function Laporan() {
           timeZone: 'Asia/Jakarta',
           hour: '2-digit', minute: '2-digit', second: '2-digit'
         })
-        const subModal = item.products.harga_modal * item.quantity
+        const subModal = (item.products?.harga_modal ?? 0) * item.quantity
         const fullTrx = trxList.find(t => t.id === item.transaction_id)
         const diskonTrx = fullTrx?.diskon || 0
         const metode = fullTrx?.payment_method || 'Tunai'
 
-        const totalKotorTrx = fullTrx.total_harga + diskonTrx
+        const totalKotorTrx = (fullTrx?.total_harga ?? 0) + diskonTrx
         const diskonProporsional = totalKotorTrx > 0 ? (item.subtotal / totalKotorTrx) * diskonTrx : 0
         const keuntunganBersihItem = item.subtotal - diskonProporsional - subModal
 
         return [
           waktu,
           item.transaction_id.slice(0, 8),
-          `"${item.products.name}"`,
-          `"${item.products.category || 'Umum'}"`,
+          `"${item.products?.name ?? '—'}"`,
+          `"${item.products?.category || 'Umum'}"`,
           metode,
-          item.products.harga_modal,
-          item.products.harga_jual,
+          item.products?.harga_modal ?? 0,
+          item.products?.harga_jual ?? 0,
           item.quantity,
           item.subtotal,
           diskonProporsional.toFixed(2),
@@ -501,210 +592,209 @@ export default function Laporan() {
   return (
     <>
       <Toast toast={toast} onClose={() => setToast(null)} />
+      {checkingAuth && (
+        <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500"></div>
+        </div>
+      )}
       <ConfirmDialog confirm={confirmState} onYes={handleConfirmYes} onNo={handleConfirmNo} />
 
-      <main className="min-h-screen bg-gray-50 text-gray-900 font-sans p-4 md:p-8">
-        <div className="max-w-4xl mx-auto">
+      <main className="flex min-h-screen bg-gray-50 text-gray-900 font-sans">
+        <AdminSidebar />
+        <div className="flex-1 pt-16 md:pt-0 overflow-x-hidden">
+          <div className="max-w-4xl mx-auto p-4 md:p-8">
 
-          {/* HEADER */}
-          <header className="flex justify-between items-center mb-8">
-            <div>
-              <Link href="/" className="text-pink-500 hover:underline text-sm mb-2 inline-block">
-                ← Kembali ke Kasir
-              </Link>
-              <h1 className="text-3xl font-black text-pink-500 tracking-tighter">Laporan Harian</h1>
-              <p className="text-gray-500 text-sm">Rekap penjualan Anda hari ini</p>
-            </div>
-            <button
-              onClick={() => { fetchTransactions(); checkStatus(); fetchHistory() }}
-              className="p-2 bg-white rounded-xl border border-gray-200 hover:border-pink-300 transition-all shadow-sm"
-            >
-              🔄
-            </button>
-          </header>
-
-          {/* SUMMARY CARD */}
-          <section className={`rounded-3xl p-8 text-white shadow-xl mb-8 flex flex-col md:flex-row justify-between items-center gap-6 transition-colors ${isClosed ? 'bg-gray-800 shadow-gray-100' : 'bg-pink-500 shadow-pink-100'}`}>
-            <div className="text-center md:text-left">
-              <div className="flex items-center gap-2 mb-1 justify-center md:justify-start">
-                <p className="text-pink-100 text-sm font-medium uppercase tracking-wider opacity-80">
-                  {isClosed ? 'Rekap Penjualan (HARI DITUTUP)' : 'Total Penjualan Hari Ini'}
-                </p>
-                {isClosed && <span className="bg-green-500 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-widest">Locked</span>}
-              </div>
-              <h2 className="text-4xl md:text-5xl font-black tracking-tighter">
-                {formatIDR(totalHariIni)}
-              </h2>
-              <div className="flex gap-4 mt-3">
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-pink-100 uppercase font-bold opacity-60">Tunai</span>
-                  <span className="text-lg font-bold text-green-300">{formatIDR(totalCash)}</span>
-                </div>
-                <div className="w-[1px] h-8 bg-white/20 self-center"></div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-pink-100 uppercase font-bold opacity-60">QRIS / Non-Tunai</span>
-                  <span className="text-lg font-bold text-red-300">{formatIDR(totalQRIS)}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-4 items-center">
-              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 text-center border border-white/20 min-w-[120px]">
-                <p className="text-xs text-pink-100 mb-1 opacity-70">Transaksi</p>
-                <p className="text-2xl font-bold">{transactions.length}</p>
-              </div>
-
-              {!isClosed ? (
-                <button
-                  onClick={handleCloseDay}
-                  disabled={closing || transactions.length === 0}
-                  className="bg-white text-pink-500 px-6 py-4 rounded-2xl font-bold shadow-lg hover:bg-pink-50 transition-all active:scale-95 disabled:opacity-50"
-                >
-                  {closing ? '...' : 'Tutup Hari'}
-                </button>
-              ) : (
-                <button
-                  onClick={handleOpenDay}
-                  className="bg-green-500 text-white px-6 py-4 rounded-2xl font-bold shadow-lg hover:bg-green-600 transition-all active:scale-95 flex flex-col items-center leading-tight"
-                >
-                  <span className="text-[10px] uppercase opacity-80">Status: Closed</span>
-                  <span>Buka Hari</span>
-                </button>
-              )}
-            </div>
-          </section>
-
-          {/* TRANSACTION LIST */}
-          <section className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden mb-8">
-            <div className="p-6 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
-              <h3 className="font-bold text-gray-700">Detail Transaksi Hari Ini</h3>
-              {transactions.length > 0 && (
-                <button
-                  onClick={() => exportDailyDetailCSV(new Date().toISOString().split('T')[0])}
-                  className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded-xl hover:bg-green-600 transition-all shadow-md shadow-green-100 flex items-center gap-2"
-                >
-                  ⬇ Export Detail Hari Ini
-                </button>
-              )}
-            </div>
-            <div className="overflow-x-auto">
-              {loading ? (
-                <div className="p-12 text-center text-gray-400">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500 mx-auto mb-4"></div>
-                  Memuat data...
-                </div>
-              ) : transactions.length === 0 ? (
-                <div className="p-12 text-center text-gray-400">
-                  <span className="text-4xl mb-4 block">📭</span>
-                  <p>Belum ada transaksi hari ini.</p>
-                </div>
-              ) : (
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50">
-                      <th className="px-6 py-4">Waktu</th>
-                      <th className="px-6 py-4">Produk yang Dibeli</th>
-                      <th className="px-6 py-4 text-center">Metode</th>
-                      <th className="px-6 py-4 text-right">Total</th>
-                      <th className="px-6 py-4 text-center">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {transactions.map((trx) => (
-                      <tr key={trx.id} className="hover:bg-gray-50 transition-colors align-top">
-                        <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
-                          <p>{formatTime(trx.created_at)}</p>
-                          <p className="text-[10px] font-mono text-gray-300 mt-0.5">#{trx.id.slice(0, 8)}</p>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col gap-1">
-                            {trx.transaction_items?.map((item, i) => (
-                              <span key={i} className="text-sm text-gray-600">
-                                <span className="font-medium">{item.products?.name ?? '—'}</span>
-                                <span className="text-gray-400"> × {item.quantity}</span>
-                                <span className="text-pink-400 ml-1 text-xs">({formatIDR(item.subtotal)})</span>
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-widest
-                            ${trx.payment_method === 'Tunai' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                            {trx.payment_method || 'Tunai'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right whitespace-nowrap">
-                          <p className="font-bold text-gray-700">{formatIDR(trx.total_harga)}</p>
-                          {trx.diskon > 0 && (
-                            <p className="text-xs text-amber-500 font-medium">Diskon {formatIDR(trx.diskon)}</p>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <button
-                            onClick={() => handleVoidTransaction(trx)}
-                            disabled={isClosed}
-                            className="px-4 py-1.5 bg-red-500 text-white hover:bg-red-600 disabled:opacity-30 disabled:hover:bg-red-500 text-[10px] font-bold rounded-full transition-colors uppercase tracking-widest shadow-sm"
-                          >
-                            REFUND
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </section>
-
-          {/* DAILY SUMMARY HISTORY */}
-          <section className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b border-gray-50 bg-blue-50/30 flex justify-between items-center">
+            {/* HEADER */}
+            <header className="flex justify-between items-center mb-8">
               <div>
-                <h3 className="font-bold text-blue-800">Riwayat Rekap Harian</h3>
-                <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-1 rounded-full font-bold">DATA PERMANEN</span>
+                <h1 className="text-3xl font-bold text-pink-500 tracking-tighter">Laporan Harian</h1>
+                <p className="text-gray-500 text-sm">Rekap penjualan Anda hari ini</p>
               </div>
-              <button
-                onClick={exportCSV}
-                disabled={history.length === 0}
-                className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded-xl hover:bg-green-600 transition-all shadow-md shadow-green-100 flex items-center gap-2 disabled:opacity-50"
-              >
-                ⬇ Export Riwayat
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              {history.length === 0 ? (
-                <div className="p-12 text-center text-gray-300">
-                  <p>Belum ada riwayat penutupan hari.</p>
+            </header>
+
+            {/* SUMMARY CARD */}
+            <section className={`rounded-3xl p-8 text-white shadow-xl mb-8 flex flex-col md:flex-row justify-between items-center gap-6 transition-colors ${isClosed ? 'bg-gray-800 shadow-gray-100' : 'bg-pink-500 shadow-pink-100'}`}>
+              <div className="text-center md:text-left">
+                <div className="flex items-center gap-2 mb-1 justify-center md:justify-start">
+                  <p className="text-pink-100 text-sm font-medium uppercase tracking-wider opacity-80">
+                    {isClosed ? 'Rekap Penjualan (HARI DITUTUP)' : 'Total Penjualan Hari Ini'}
+                  </p>
+                  {isClosed && <span className="bg-green-500 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-widest">Locked</span>}
                 </div>
-              ) : (
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50">
-                      <th className="px-6 py-4">Tanggal</th>
-                      <th className="px-6 py-4 text-right">Penjualan</th>
-                      <th className="px-6 py-4 text-right">Modal</th>
-                      <th className="px-6 py-4 text-right text-pink-500">Untung Bersih</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {history.map((item) => (
-                      <tr key={item.id} className="hover:bg-blue-50/30 transition-colors">
-                        <td className="px-6 py-4">
-                          <p className="font-medium text-gray-700">
-                            {new Date(item.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}
-                          </p>
-                          <p className="text-[10px] text-gray-400 font-mono">#{item.jumlah_transaksi} Trx</p>
-                        </td>
-                        <td className="px-6 py-4 text-right text-gray-600 font-medium">{formatIDR(item.total_penjualan)}</td>
-                        <td className="px-6 py-4 text-right text-gray-400 text-sm">{formatIDR(item.total_modal)}</td>
-                        <td className="px-6 py-4 text-right font-black text-pink-500">{formatIDR(item.keuntungan_bersih)}</td>
+                <h2 className="text-4xl md:text-5xl font-black tracking-tighter">
+                  {formatIDR(totalHariIni)}
+                </h2>
+                <div className="flex gap-4 mt-3">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-pink-100 uppercase font-bold opacity-60">Tunai</span>
+                    <span className="text-lg font-bold text-green-300">{formatIDR(totalCash)}</span>
+                  </div>
+                  <div className="w-[1px] h-8 bg-white/20 self-center"></div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-pink-100 uppercase font-bold opacity-60">QRIS / Non-Tunai</span>
+                    <span className="text-lg font-bold text-red-300">{formatIDR(totalQRIS)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-4 items-center">
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 text-center border border-white/20 min-w-[120px]">
+                  <p className="text-xs text-pink-100 mb-1 opacity-70">Transaksi</p>
+                  <p className="text-2xl font-bold">{transactions.length}</p>
+                </div>
+
+                {!isClosed ? (
+                  <button
+                    onClick={handleCloseDay}
+                    disabled={closing || transactions.length === 0}
+                    className="bg-white text-pink-500 px-6 py-4 rounded-2xl font-bold shadow-lg hover:bg-pink-50 transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    {closing ? '...' : 'Tutup Hari'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleOpenDay}
+                    className="bg-green-500 text-white px-6 py-4 rounded-2xl font-bold shadow-lg hover:bg-green-600 transition-all active:scale-95 flex flex-col items-center leading-tight"
+                  >
+                    <span className="text-[10px] uppercase opacity-80">Status: Closed</span>
+                    <span>Buka Hari</span>
+                  </button>
+                )}
+              </div>
+            </section>
+
+            {/* TRANSACTION LIST */}
+            <section className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden mb-8">
+              <div className="p-6 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
+                <h3 className="font-bold text-gray-700">Detail Transaksi Hari Ini</h3>
+                {transactions.length > 0 && (
+                  <button
+                    onClick={() => exportDailyDetailCSV(new Date().toISOString().split('T')[0])}
+                    className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded-xl hover:bg-green-600 transition-all shadow-md shadow-green-100 flex items-center gap-2"
+                  >
+                    ⬇ Export Detail Hari Ini
+                  </button>
+                )}
+              </div>
+              <div className="overflow-x-auto">
+                {loading ? (
+                  <div className="p-12 text-center text-gray-400">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500 mx-auto mb-4"></div>
+                    Memuat data...
+                  </div>
+                ) : transactions.length === 0 ? (
+                  <div className="p-12 text-center text-gray-400">
+                    <span className="text-4xl mb-4 block">📭</span>
+                    <p>Belum ada transaksi hari ini.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50">
+                        <th className="px-6 py-4">Waktu</th>
+                        <th className="px-6 py-4">Produk yang Dibeli</th>
+                        <th className="px-6 py-4 text-center">Metode</th>
+                        <th className="px-6 py-4 text-right">Total</th>
+                        <th className="px-6 py-4 text-center">Aksi</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </section>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {transactions.map((trx) => (
+                        <tr key={trx.id} className="hover:bg-gray-50 transition-colors align-top">
+                          <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
+                            <p>{formatTime(trx.created_at)}</p>
+                            <p className="text-[10px] font-mono text-gray-300 mt-0.5">#{trx.id.slice(0, 8)}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col gap-1">
+                              {trx.transaction_items?.map((item, i) => (
+                                <span key={i} className="text-sm text-gray-600">
+                                  <span className="font-medium">{item.products?.name ?? '—'}</span>
+                                  <span className="text-gray-400"> × {item.quantity}</span>
+                                  <span className="text-pink-400 ml-1 text-xs">({formatIDR(item.subtotal)})</span>
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-widest
+                            ${trx.payment_method === 'Tunai' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {trx.payment_method || 'Tunai'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right whitespace-nowrap">
+                            <p className="font-bold text-gray-700">{formatIDR(trx.total_harga)}</p>
+                            {trx.diskon > 0 && (
+                              <p className="text-xs text-amber-500 font-medium">Diskon {formatIDR(trx.diskon)}</p>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              onClick={() => handleVoidTransaction(trx)}
+                              disabled={isClosed}
+                              className="px-4 py-1.5 bg-red-500 text-white hover:bg-red-600 disabled:opacity-30 disabled:hover:bg-red-500 text-[10px] font-bold rounded-full transition-colors uppercase tracking-widest shadow-sm"
+                            >
+                              REFUND
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </section>
+
+            {/* DAILY SUMMARY HISTORY */}
+            <section className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="p-6 border-b border-gray-50 bg-blue-50/30 flex justify-between items-center">
+                <div>
+                  <h3 className="font-bold text-blue-800">Riwayat Rekap Harian</h3>
+                  <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-1 rounded-full font-bold">DATA PERMANEN</span>
+                </div>
+                <button
+                  onClick={exportCSV}
+                  disabled={history.length === 0}
+                  className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded-xl hover:bg-green-600 transition-all shadow-md shadow-green-100 flex items-center gap-2 disabled:opacity-50"
+                >
+                  ⬇ Export Riwayat
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                {history.length === 0 ? (
+                  <div className="p-12 text-center text-gray-300">
+                    <p>Belum ada riwayat penutupan hari.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50">
+                        <th className="px-6 py-4">Tanggal</th>
+                        <th className="px-6 py-4 text-right">Penjualan</th>
+                        <th className="px-6 py-4 text-right">Modal</th>
+                        <th className="px-6 py-4 text-right text-pink-500">Untung Bersih</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {history.map((item) => (
+                        <tr key={item.id} className="hover:bg-blue-50/30 transition-colors">
+                          <td className="px-6 py-4">
+                            <p className="font-medium text-gray-700">
+                              {new Date(item.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}
+                            </p>
+                            <p className="text-[10px] text-gray-400 font-mono">#{item.jumlah_transaksi} Trx</p>
+                          </td>
+                          <td className="px-6 py-4 text-right text-gray-600 font-medium">{formatIDR(item.total_penjualan)}</td>
+                          <td className="px-6 py-4 text-right text-gray-400 text-sm">{formatIDR(item.total_modal)}</td>
+                          <td className="px-6 py-4 text-right font-black text-pink-500">{formatIDR(item.keuntungan_bersih)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </section>
+          </div>
         </div>
       </main>
     </>
