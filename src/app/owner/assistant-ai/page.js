@@ -401,7 +401,7 @@ export default function AssistantAIPage() {
                 <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-lg flex-shrink-0"
                   style={{ backgroundColor: primaryColor, boxShadow: `0 6px 20px ${primaryColor}45` }}>✦</div>
                 <div>
-                  <h1 className="text-2xl font-black text-gray-800 tracking-tight leading-none">AI Business Assistant</h1>
+                  <h1 className="text-3xl font-semibold tracking-tight leading-none" style={{ color: primaryColor }}>AI Business Assistant</h1>
                   <p className="text-sm text-gray-500 mt-1">{storeName ? `Analisa real-time untuk ${storeName}` : 'Memuat data toko…'}</p>
                 </div>
               </div>

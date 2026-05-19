@@ -117,7 +117,7 @@ export default function Kustomisasi() {
 
           {/* Header */}
           <header className="mb-10">
-            <h1 className="text-3xl font-bold text-pink-500 tracking-tighter" style={{ color: activeColor }}>
+            <h1 className="text-3xl font-semibold tracking-tight" style={{ color: activeColor }}>
               Kustomisasi Toko
             </h1>
             <p className="text-gray-400 text-sm mt-1">Sesuaikan tampilan dan identitas toko Anda</p>

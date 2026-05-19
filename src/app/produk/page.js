@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { getUserProfile, getRole } from '../../lib/auth'
 import { useRouter } from 'next/navigation'
 import AdminSidebar from '../../components/AdminSidebar'
+import { useTheme } from '../../lib/ThemeContext'
 
 // ─── Toast Component ──────────────────────────────────────────────────────────
 function Toast({ toast, onClose }) {
@@ -38,6 +39,7 @@ function Toast({ toast, onClose }) {
 
 // ─── Confirm Dialog Component ─────────────────────────────────────────────────
 function ConfirmDialog({ confirm, onYes, onNo }) {
+  const { primaryColor } = useTheme()
   if (!confirm) return null
   let iconElement = null
   if (confirm.icon === '🗑️') {
@@ -59,8 +61,12 @@ function ConfirmDialog({ confirm, onYes, onNo }) {
           <button onClick={onNo} className="px-5 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-semibold hover:bg-gray-200 transition-all">
             {confirm.labelNo ?? 'Batal'}
           </button>
-          <button onClick={onYes} className={`px-5 py-2.5 rounded-xl text-white font-bold transition-all active:scale-95 shadow-md
-            ${confirm.danger ? 'bg-red-500 hover:bg-red-600 shadow-red-100' : 'bg-pink-500 hover:bg-pink-600 shadow-pink-100'}`}>
+          <button
+            onClick={onYes}
+            className={`px-5 py-2.5 rounded-xl text-white font-bold transition-all active:scale-95 shadow-md
+              ${confirm.danger ? 'bg-red-500 hover:bg-red-600 shadow-red-100' : ''}`}
+            style={!confirm.danger ? { backgroundColor: primaryColor, boxShadow: `0 4px 12px ${primaryColor}20` } : {}}
+          >
             {confirm.labelYes ?? 'Ya'}
           </button>
         </div>
@@ -71,6 +77,7 @@ function ConfirmDialog({ confirm, onYes, onNo }) {
 
 // ─── Product Form Modal ───────────────────────────────────────────────────────
 function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
+  const { primaryColor } = useTheme()
   const [isManualCategory, setIsManualCategory] = useState(false)
   const [form, setForm] = useState({
     name: product?.name ?? '',
@@ -133,12 +140,12 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
                     name="category_select"
                     value={form.category}
                     onChange={handleChange}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm transition-all shadow-sm font-medium appearance-none bg-white"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100 text-gray-700 text-sm transition-all shadow-sm font-bold appearance-none bg-white cursor-pointer"
                   >
                     {categories.map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
-                    <option value="ADD_NEW" className="text-pink-500 font-bold">+ Tambah Kategori Baru...</option>
+                    <option value="ADD_NEW" className="font-bold" style={{ color: primaryColor }}>+ Tambah Kategori Baru...</option>
                   </select>
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</div>
                 </div>
@@ -150,7 +157,7 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
                     value={form.category}
                     onChange={handleChange}
                     placeholder="Ketik kategori baru..."
-                    className="flex-1 px-4 py-3 rounded-xl border border-pink-200 bg-pink-50/30 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm transition-all shadow-sm font-medium"
+                    className="flex-1 px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100 text-gray-700 text-sm transition-all shadow-sm font-medium"
                   />
                   {categories.length > 0 && (
                     <button
@@ -176,7 +183,7 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
               onChange={handleChange}
               required
               placeholder="Contoh: Strap 10, Gelang 10 ..."
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm transition-all shadow-sm font-medium"
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100 text-gray-700 text-sm transition-all shadow-sm font-medium"
             />
           </div>
 
@@ -193,7 +200,7 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
                   value={form.harga_modal}
                   onChange={handleChange}
                   placeholder="0"
-                  className="w-full pl-9 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm transition-all font-medium"
+                  className="w-full pl-9 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100 text-gray-700 text-sm transition-all font-medium"
                 />
               </div>
             </div>
@@ -210,7 +217,7 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
                   value={form.harga_jual}
                   onChange={handleChange}
                   placeholder="0"
-                  className="w-full pl-9 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm transition-all font-medium"
+                  className="w-full pl-9 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100 text-gray-700 text-sm transition-all font-medium"
                 />
               </div>
             </div>
@@ -226,7 +233,7 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
               value={form.stock}
               onChange={handleChange}
               placeholder="0"
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm transition-all font-medium"
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100 text-gray-700 text-sm transition-all font-medium"
             />
           </div>
 
@@ -243,7 +250,8 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 py-3.5 rounded-xl bg-pink-500 text-white font-bold hover:bg-pink-600 transition-all active:scale-95 shadow-lg shadow-pink-100 disabled:opacity-50 text-sm"
+              className="flex-1 py-3.5 rounded-xl text-white font-bold transition-all active:scale-95 disabled:opacity-50 text-sm shadow-md"
+              style={{ backgroundColor: primaryColor, boxShadow: `0 4px 12px ${primaryColor}20` }}
             >
               {saving ? 'Menyimpan...' : mode === 'add' ? 'Tambah Produk' : 'Simpan Perubahan'}
             </button>
@@ -256,6 +264,7 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Produk() {
+  const { primaryColor } = useTheme()
   const router = useRouter()
   const [profile, setProfile] = useState(null)
   const [role, setRole] = useState(null)
@@ -482,7 +491,7 @@ export default function Produk() {
       <Toast toast={toast} onClose={() => setToast(null)} />
       {checkingAuth && (
         <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: primaryColor }}></div>
         </div>
       )}
       <ConfirmDialog confirm={confirmState} onYes={handleConfirmYes} onNo={handleConfirmNo} />
@@ -497,22 +506,25 @@ export default function Produk() {
         />
       )}
 
-      <main className="flex min-h-screen bg-gray-50 text-gray-900 font-sans">
+      <main className="flex min-h-screen bg-slate-50 text-slate-900 font-sans">
         <AdminSidebar />
         <div className="flex-1 pt-16 md:pt-0 overflow-x-hidden">
           <div className="max-w-5xl mx-auto p-4 md:p-8">
 
             {/* HEADER (STICKY WITH GLASSMORPHISM) */}
-            <header className="sticky top-0 z-40 bg-gray-50/70 backdrop-blur-md -mx-4 md:-mx-8 px-4 md:px-8 py-6 mb-4 flex flex-col md:flex-row justify-between gap-4 border-b border-gray-200/50">
+            <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md -mx-4 md:-mx-8 px-4 md:px-8 py-6 mb-4 flex flex-col md:flex-row justify-between gap-4 border-b border-slate-100">
               <div>
-                <h1 className="text-3xl font-bold text-pink-500 tracking-tighter">Kelola Produk</h1>
-                <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mt-1">{filtered.length} produk ditampilkan</p>
+                <h1 className="text-3xl font-semibold tracking-tight" style={{ color: primaryColor }}>Kelola Produk</h1>
+                <span className="text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest mt-1 inline-block border"
+                      style={{ color: primaryColor, borderColor: `${primaryColor}20`, backgroundColor: `${primaryColor}08` }}>
+                  {filtered.length} Produk
+                </span>
               </div>
               <div className="flex gap-2 items-start flex-wrap md:flex-nowrap">
                 <select
                   value={filterCategory}
                   onChange={(e) => setFilterCategory(e.target.value)}
-                  className="px-3 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-xs text-gray-700 bg-white transition-all shadow-sm font-bold cursor-pointer outline-none max-w-[140px] truncate"
+                  className="px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100 text-xs text-gray-700 bg-white transition-all shadow-sm font-bold cursor-pointer outline-none max-w-[140px] truncate"
                 >
                   <option value="Semua">Semua Kategori</option>
                   {uniqueCategories.map(cat => (
@@ -522,7 +534,7 @@ export default function Produk() {
                 <select
                   value={sortByStock}
                   onChange={(e) => setSortByStock(e.target.value)}
-                  className="px-3 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-xs text-gray-700 bg-white transition-all shadow-sm font-bold cursor-pointer outline-none"
+                  className="px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100 text-xs text-gray-700 bg-white transition-all shadow-sm font-bold cursor-pointer outline-none"
                 >
                   <option value="none">Stok: Default</option>
                   <option value="asc">Stok: Terkecil</option>
@@ -532,11 +544,12 @@ export default function Produk() {
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Cari nama atau kategori..."
-                  className="px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-sm text-gray-700 bg-white w-40 md:w-56 transition-all shadow-sm font-medium"
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100 text-sm text-gray-700 bg-white w-40 md:w-56 transition-all shadow-sm font-medium"
                 />
                 <button
                   onClick={() => setModal({ mode: 'add' })}
-                  className="px-4 py-2.5 bg-pink-500 text-white font-bold rounded-xl hover:bg-pink-600 transition-all active:scale-95 shadow-lg shadow-pink-100 text-sm whitespace-nowrap flex items-center gap-1.5"
+                  className="px-4 py-2.5 text-white font-bold rounded-xl hover:opacity-90 transition-all active:scale-95 text-sm whitespace-nowrap flex items-center gap-1.5 shadow-md"
+                  style={{ backgroundColor: primaryColor, boxShadow: `0 4px 12px ${primaryColor}20` }}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -556,7 +569,7 @@ export default function Produk() {
                 const getStatIcon = (type) => {
                   if (type === 'total') {
                     return (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-pink-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
                       </svg>
                     )
@@ -578,25 +591,25 @@ export default function Produk() {
                   return null
                 }
                 return (
-                  <div key={stat.label} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm transition-all hover:shadow-md">
+                  <div key={stat.label} className="bg-white rounded-[2rem] p-6 border-2 shadow-sm transition-all hover:shadow-md" style={{ borderColor: `${primaryColor}20`, boxShadow: `0 4px 20px -2px rgba(148, 163, 184, 0.08)` }}>
                     <div className="mb-2">{getStatIcon(stat.type)}</div>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1">{stat.label}</p>
-                    <p className="text-xl font-bold text-gray-800 tracking-tight">{stat.value}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">{stat.label}</p>
+                    <p className="text-xl font-bold text-slate-800 tracking-tight">{stat.value}</p>
                   </div>
                 )
               })}
             </div>
 
             {/* PRODUCT TABLE */}
-            <section className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
-              <div className="p-6 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
-                <h3 className="font-bold text-gray-700">Daftar Produk</h3>
+            <section className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
+              <div className="p-6 border-b border-slate-100 bg-white flex justify-between items-center">
+                <h3 className="font-bold text-slate-800 text-sm">Daftar Produk</h3>
                 {products.length > 0 && (
                   <button
                     onClick={exportProductsCSV}
-                    className="px-4 py-2 bg-green-500 text-white text-xs font-bold rounded-xl hover:bg-green-600 transition-all shadow-md shadow-green-100 flex items-center gap-1.5"
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all active:scale-95 shadow-md shadow-emerald-600/10 flex items-center gap-1.5"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 inline mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                     </svg>
                     <span>Export CSV</span>
@@ -606,7 +619,7 @@ export default function Produk() {
               <div className="overflow-x-auto">
                 {loading ? (
                   <div className="p-16 text-center text-gray-400">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500 mx-auto mb-4"></div>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4" style={{ borderColor: primaryColor }}></div>
                     Memuat produk...
                   </div>
                 ) : filtered.length === 0 ? (
@@ -619,7 +632,7 @@ export default function Produk() {
                 ) : (
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 bg-gray-50/50">
+                      <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 bg-white">
                         <th className="px-6 py-5">Produk & Kategori</th>
                         <th className="px-6 py-5 text-right">Harga Modal</th>
                         <th className="px-6 py-5 text-right">Harga Jual</th>
@@ -627,22 +640,23 @@ export default function Produk() {
                         <th className="px-6 py-5 text-center">Aksi</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-slate-100/50">
                       {filtered.map((product) => {
 
                         const isLowStock = (product.stock ?? 0) <= 3
                         return (
-                          <tr key={product.id} className="hover:bg-gray-50/70 transition-colors group">
+                          <tr key={product.id} className="hover:bg-slate-50/40 transition-colors group">
                             <td className="px-6 py-5">
-                              <p className="font-semibold text-gray-700 leading-tight mb-1.5">{product.name}</p>
-                              <span className="text-[9px] bg-pink-50 text-pink-500 px-2.5 py-0.5 rounded-full font-medium uppercase tracking-widest">
+                              <p className="font-semibold text-slate-700 leading-tight mb-1.5 text-xs">{product.name}</p>
+                              <span className="text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest"
+                                    style={{ color: primaryColor, backgroundColor: `${primaryColor}10` }}>
                                 {product.category || 'Umum'}
                               </span>
                             </td>
-                            <td className="px-6 py-5 text-right text-gray-400 text-sm font-medium">
+                            <td className="px-6 py-5 text-right text-slate-400 text-xs font-semibold">
                               {formatIDR(product.harga_modal)}
                             </td>
-                            <td className="px-6 py-5 text-right font-bold text-pink-500 text-sm">
+                            <td className="px-6 py-5 text-right font-black text-xs" style={{ color: primaryColor }}>
                               {formatIDR(product.harga_jual)}
                             </td>
 
