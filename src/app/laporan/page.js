@@ -93,6 +93,320 @@ function ConfirmDialog({ confirm, onYes, onNo }) {
   )
 }
 
+// ─── Custom Detail Transaksi Modal Component ──────────────────────────────────
+function DetailTransaksiModal({ date, isOpen, onClose, transactions, loading, formatIDR }) {
+  const [selectedCategory, setSelectedCategory] = useState('Semua')
+  const [selectedPayment, setSelectedPayment] = useState('Semua')
+
+  if (!isOpen) return null
+
+  const formattedDate = new Date(date).toLocaleDateString('id-ID', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  })
+
+  // 1. Get unique categories dynamically
+  const categories = ['Semua', ...new Set(
+    transactions.flatMap(t => 
+      t.transaction_items?.map(item => item.products?.category).filter(Boolean) || []
+    )
+  )]
+
+  // 2. Get unique payment methods dynamically
+  const paymentMethods = ['Semua', ...new Set(
+    transactions.map(t => t.payment_method).filter(Boolean)
+  )]
+
+  // 3. Filter transactions based on selection
+  const filteredTransactions = transactions.map(t => {
+    // Filter by payment method
+    if (selectedPayment !== 'Semua' && t.payment_method !== selectedPayment) {
+      return null
+    }
+
+    // Filter transaction items by category
+    const filteredItems = t.transaction_items?.filter(item => {
+      if (selectedCategory === 'Semua') return true
+      return item.products?.category === selectedCategory
+    }) || []
+
+    if (filteredItems.length === 0) return null
+
+    return {
+      ...t,
+      transaction_items: filteredItems
+    }
+  }).filter(Boolean)
+
+  // 4. Calculate dynamic summary based on filters
+  const totalRevenue = filteredTransactions.reduce((acc, t) => {
+    if (selectedCategory !== 'Semua') {
+      return acc + t.transaction_items.reduce((sum, item) => sum + item.subtotal, 0)
+    }
+    return acc + t.total_harga
+  }, 0)
+
+  const totalDiscounts = selectedCategory === 'Semua'
+    ? filteredTransactions.reduce((acc, t) => acc + (t.diskon || 0), 0)
+    : 0 // set to 0 if category is filtered as discounts are transaction-wide
+
+  const totalCash = filteredTransactions.filter(t => t.payment_method === 'Tunai').reduce((acc, t) => {
+    if (selectedCategory !== 'Semua') {
+      return acc + t.transaction_items.reduce((sum, item) => sum + item.subtotal, 0)
+    }
+    return acc + t.total_harga
+  }, 0)
+
+  const totalQRIS = filteredTransactions.filter(t => t.payment_method !== 'Tunai').reduce((acc, t) => {
+    if (selectedCategory !== 'Semua') {
+      return acc + t.transaction_items.reduce((sum, item) => sum + item.subtotal, 0)
+    }
+    return acc + t.total_harga
+  }, 0)
+
+  // 5. Generate and export CSV following the active filters
+  const handleExportCSV = () => {
+    const headers = [
+      'Waktu (WIB)',
+      'ID Transaksi',
+      'Nama Produk',
+      'Kategori',
+      'Metode',
+      'Harga Modal',
+      'Harga Jual',
+      'Qty',
+      'Subtotal Jual (Kotor)',
+      'Diskon (Proporsional)',
+      'Subtotal Modal',
+      'Keuntungan Bersih Item'
+    ]
+
+    const rows = []
+    filteredTransactions.forEach(t => {
+      const waktu = new Date(t.created_at).toLocaleString('id-ID', {
+        timeZone: 'Asia/Jakarta',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      })
+      const diskonTrx = t.diskon || 0
+      const totalKotorTrx = t.total_harga + diskonTrx
+
+      t.transaction_items.forEach(item => {
+        const subModal = (item.products?.harga_modal ?? 0) * item.quantity
+        const diskonProporsional = totalKotorTrx > 0 ? (item.subtotal / totalKotorTrx) * diskonTrx : 0
+        const keuntunganBersihItem = item.subtotal - diskonProporsional - subModal
+
+        rows.push([
+          waktu,
+          t.id.slice(0, 8),
+          `"${item.products?.name ?? '—'}"`,
+          `"${item.products?.category || 'Umum'}"`,
+          t.payment_method || 'Tunai',
+          item.products?.harga_modal ?? 0,
+          item.products?.harga_jual ?? 0,
+          item.quantity,
+          item.subtotal,
+          diskonProporsional.toFixed(2),
+          subModal,
+          keuntunganBersihItem.toFixed(2)
+        ])
+      })
+    })
+
+    const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `detail-penjualan-filtered-${date}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleClose = () => {
+    setSelectedCategory('Semua')
+    setSelectedPayment('Semua')
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-md p-4 animate-fade-in">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden border border-gray-100 animate-slide-up">
+        {/* Header */}
+        <div className="p-6 border-b border-gray-100 flex justify-between items-start bg-pink-50/30">
+          <div>
+            <span className="text-[10px] bg-pink-100 text-pink-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">Detail Riwayat Harian</span>
+            <h3 className="font-black text-gray-800 text-2xl mt-2 tracking-tight">{formattedDate}</h3>
+          </div>
+          <button 
+            onClick={handleClose} 
+            className="text-gray-400 hover:text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-full p-2 leading-none transition-all"
+            aria-label="Tutup"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Penyaringan (Filter) Inputs */}
+        <div className="flex flex-col sm:flex-row gap-4 p-6 bg-gray-50/50 border-b border-gray-100">
+          <div className="flex-1">
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">Kategori Produk</label>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full bg-white border border-gray-200 rounded-2xl px-3 py-2.5 text-sm font-semibold text-gray-700 focus:outline-none focus:border-pink-300 focus:ring-1 focus:ring-pink-100 transition-all cursor-pointer"
+            >
+              {categories.map((cat, i) => (
+                <option key={i} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex-1">
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">Metode Pembayaran</label>
+            <select
+              value={selectedPayment}
+              onChange={(e) => setSelectedPayment(e.target.value)}
+              className="w-full bg-white border border-gray-200 rounded-2xl px-3 py-2.5 text-sm font-semibold text-gray-700 focus:outline-none focus:border-pink-300 focus:ring-1 focus:ring-pink-100 transition-all cursor-pointer"
+            >
+              {paymentMethods.map((met, i) => (
+                <option key={i} value={met}>{met}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Note / Info */}
+        <div className="p-4 bg-amber-50/60 border-b border-amber-100/50 flex gap-2.5 items-start text-xs text-amber-800">
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-4.5 h-4.5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+          </svg>
+          <div className="leading-tight">
+            <span className="font-bold">Catatan Penyaringan:</span> Seluruh ringkasan pendapatan, daftar transaksi, dan hasil ekspor CSV di bawah akan otomatis disaring berdasarkan filter aktif di atas.
+          </div>
+        </div>
+
+        {/* Ringkasan Singkat Hari Itu (Berdasarkan Filter) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 border-b border-gray-100 bg-gray-50/30 p-4 gap-4">
+          <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm text-center">
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-0.5">Penjualan</span>
+            <span className="text-sm font-black text-pink-600">{formatIDR(totalRevenue)}</span>
+          </div>
+          <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm text-center">
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-0.5">Diskon</span>
+            <span className="text-sm font-black text-amber-600">{formatIDR(totalDiscounts)}</span>
+          </div>
+          <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm text-center">
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-0.5">Tunai</span>
+            <span className="text-sm font-black text-green-600">{formatIDR(totalCash)}</span>
+          </div>
+          <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm text-center">
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-0.5">QRIS / Non-Tunai</span>
+            <span className="text-sm font-black text-blue-600">{formatIDR(totalQRIS)}</span>
+          </div>
+        </div>
+
+        {/* List Transaksi */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-[250px]">
+          {loading ? (
+            <div className="py-16 text-center text-gray-400">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-pink-500 mx-auto mb-4"></div>
+              Memuat detail transaksi...
+            </div>
+          ) : filteredTransactions.length === 0 ? (
+            <div className="py-16 text-center text-gray-400">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 13.5h3.86a2.25 2.25 0 0 1 2.008 1.24l.885 1.77a2.25 2.25 0 0 0 2.007 1.24h1.98a2.25 2.25 0 0 0 2.007-1.24l.885-1.77a2.25 2.25 0 0 1 2.007-1.24h3.86m-18 0h18" />
+              </svg>
+              <p className="font-bold text-sm text-gray-400">Tidak ada transaksi yang cocok dengan penyaringan aktif.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Daftar Transaksi ({filteredTransactions.length})</p>
+              {filteredTransactions.map((trx) => {
+                const timeStr = new Date(trx.created_at).toLocaleTimeString('id-ID', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  timeZone: 'Asia/Jakarta'
+                })
+                return (
+                  <div key={trx.id} className="p-4 rounded-2xl border border-gray-100 hover:border-pink-100 bg-gray-50/30 hover:bg-pink-50/5 transition-all flex flex-col gap-2">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-gray-500">{timeStr}</span>
+                        <span className="text-[10px] font-mono text-gray-300">#{trx.id.slice(0, 8)}</span>
+                      </div>
+                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider
+                        ${trx.payment_method === 'Tunai' ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
+                        {trx.payment_method || 'Tunai'}
+                      </span>
+                    </div>
+
+                    <div className="divide-y divide-gray-100/50">
+                      {trx.transaction_items?.map((item, idx) => (
+                        <div key={idx} className="py-1.5 flex justify-between items-center text-sm">
+                          <div className="text-gray-700">
+                            <span className="font-semibold">{item.products?.name ?? '—'}</span>
+                            <span className="text-gray-400 text-xs"> x {item.quantity}</span>
+                            <span className="text-[10px] text-pink-400 ml-1.5">({item.products?.category || 'Umum'})</span>
+                          </div>
+                          <span className="text-gray-500 font-medium">{formatIDR(item.subtotal)}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-2 border-t border-dashed border-gray-100 flex justify-between items-center">
+                      <div>
+                        {trx.diskon > 0 && selectedCategory === 'Semua' && (
+                          <span className="text-[10px] text-amber-600 font-semibold">Diskon: {formatIDR(trx.diskon)}</span>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs text-gray-400">
+                          {selectedCategory !== 'Semua' ? 'Subtotal Filter: ' : 'Total: '}
+                        </span>
+                        <span className="text-sm font-bold text-gray-800">
+                          {formatIDR(
+                            selectedCategory !== 'Semua'
+                              ? trx.transaction_items.reduce((sum, item) => sum + item.subtotal, 0)
+                              : trx.total_harga
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-gray-100 bg-gray-50/50 flex justify-between items-center gap-3">
+          <button
+            onClick={handleExportCSV}
+            disabled={filteredTransactions.length === 0 || loading}
+            className="px-5 py-3 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold rounded-2xl transition-all active:scale-95 shadow-md shadow-green-100 flex items-center gap-2 text-sm"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            Export Terfilter (CSV)
+          </button>
+          <button
+            onClick={handleClose}
+            className="px-5 py-3 bg-gray-800 hover:bg-gray-900 text-white font-bold rounded-2xl transition-all active:scale-95 text-sm"
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Laporan() {
   const router = useRouter()
   const [profile, setProfile] = useState(null)
@@ -138,6 +452,12 @@ export default function Laporan() {
   const [isClosed, setIsClosed] = useState(false)
   const [closing, setClosing] = useState(false)
   const [history, setHistory] = useState([])
+
+  // ─── Detail Riwayat Harian States ──────────────────────────────────────────
+  const [selectedHistoryDate, setSelectedHistoryDate] = useState(null)
+  const [detailTransactions, setDetailTransactions] = useState([])
+  const [loadingDetail, setLoadingDetail] = useState(false)
+  const [isDetailOpen, setIsDetailOpen] = useState(false)
 
   // ─── Overlay States ───────────────────────────────────────────────────────
   const [toast, setToast] = useState(null)
@@ -206,6 +526,39 @@ export default function Laporan() {
       .order('date', { ascending: false })
     if (data) setHistory(data)
   }, [profile?.store_id])
+
+  const fetchDetailTransactions = useCallback(async (dateStr) => {
+    if (!profile?.store_id) return
+    setLoadingDetail(true)
+    setIsDetailOpen(true)
+    setSelectedHistoryDate(dateStr)
+    
+    try {
+      const startLocal = new Date(`${dateStr}T00:00:00+07:00`).toISOString()
+      const endLocal = new Date(new Date(`${dateStr}T00:00:00+07:00`).getTime() + 86400000).toISOString()
+      const { data, error } = await supabase
+        .from('transactions')
+        .select(`
+          id, created_at, total_harga, diskon, payment_method,
+          transaction_items (
+            quantity, subtotal,
+            products ( name, category, harga_modal, harga_jual )
+          )
+        `)
+        .eq('store_id', profile.store_id)
+        .gte('created_at', startLocal)
+        .lt('created_at', endLocal)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setDetailTransactions(data || [])
+    } catch (err) {
+      console.error("Error fetching detail:", err)
+      showToast("Gagal memuat detail transaksi hari tersebut.", "error")
+    } finally {
+      setLoadingDetail(false)
+    }
+  }, [profile?.store_id, showToast])
 
   const checkStatus = useCallback(async () => {
     if (!profile?.store_id) return
@@ -530,13 +883,16 @@ export default function Laporan() {
     }
 
     try {
-      // 1. Ambil semua transaksi pada tanggal tersebut
+      // 1. Ambil semua transaksi pada tanggal tersebut dengan timezone-aware bounds (WIB, UTC+7)
+      const startLocal = new Date(`${dateStr}T00:00:00+07:00`).toISOString()
+      const endLocal = new Date(new Date(`${dateStr}T00:00:00+07:00`).getTime() + 86400000).toISOString()
+
       const { data: trxList, error: trxErr } = await supabase
         .from('transactions')
         .select('id, created_at, total_harga, diskon, payment_method')
         .eq('store_id', profile.store_id)
-        .gte('created_at', dateStr)
-        .lt('created_at', new Date(new Date(dateStr).getTime() + 86400000).toISOString().split('T')[0])
+        .gte('created_at', startLocal)
+        .lt('created_at', endLocal)
         .order('created_at', { ascending: true })
 
       if (trxErr) throw trxErr
@@ -819,10 +1175,19 @@ export default function Laporan() {
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                       {history.map((item) => (
-                        <tr key={item.id} className="hover:bg-blue-50/30 transition-colors">
+                        <tr 
+                          key={item.id} 
+                          onClick={() => fetchDetailTransactions(item.date)}
+                          className="hover:bg-pink-50/40 transition-colors cursor-pointer select-none group"
+                          title="Klik untuk melihat detail transaksi hari ini"
+                        >
                           <td className="px-6 py-4">
-                            <p className="font-medium text-gray-700">
+                            <p className="font-medium text-gray-700 flex items-center gap-1.5">
                               {new Date(item.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-pink-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                              </svg>
                             </p>
                             <p className="text-[10px] text-gray-400 font-mono">#{item.jumlah_transaksi} Trx</p>
                           </td>
@@ -839,6 +1204,18 @@ export default function Laporan() {
           </div>
         </div>
       </main>
+      <DetailTransaksiModal
+        date={selectedHistoryDate}
+        isOpen={isDetailOpen}
+        onClose={() => {
+          setIsDetailOpen(false)
+          setSelectedHistoryDate(null)
+          setDetailTransactions([])
+        }}
+        transactions={detailTransactions}
+        loading={loadingDetail}
+        formatIDR={formatIDR}
+      />
     </>
   )
 }

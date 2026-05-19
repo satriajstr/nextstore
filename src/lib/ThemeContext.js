@@ -217,7 +217,6 @@ export function ThemeProvider({ children }) {
 
   return (
     <ThemeContext.Provider value={{ storeName, primaryColor, primaryLight, primaryLighter, primaryShadow, saveTheme, loaded }}>
-      <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       <style suppressHydrationWarning>{themeCSS}</style>
       {children}
     </ThemeContext.Provider>

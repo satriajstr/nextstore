@@ -95,6 +95,7 @@ CREATE TABLE public.transaction_items (
   quantity integer NOT NULL,
   subtotal integer NOT NULL,
   store_id uuid REFERENCES public.stores(id),
+  created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT transaction_items_pkey PRIMARY KEY (id)
 );
 

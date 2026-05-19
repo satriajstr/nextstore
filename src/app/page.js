@@ -95,13 +95,7 @@ export default function Home() {
   const [gridCols, setGridCols] = useState(3)
   const [itemFontSize, setItemFontSize] = useState(16)
   const [showSettings, setShowSettings] = useState(false)
-  const [enableManualInput, setEnableManualInput] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('pos_enable_manual_input')
-      return stored !== 'false'
-    }
-    return true
-  })
+  const [enableManualInput, setEnableManualInput] = useState(true)
 
   const toggleManualInput = (val) => {
     setEnableManualInput(val)
@@ -120,13 +114,7 @@ export default function Home() {
   const [pwMessage, setPwMessage] = useState(null)
 
   // Category Filter States
-  const [showCategoryFilter, setShowCategoryFilter] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('pos_show_category_filter')
-      return stored !== 'false'
-    }
-    return true
-  })
+  const [showCategoryFilter, setShowCategoryFilter] = useState(true)
 
   const toggleCategoryFilter = (val) => {
     setShowCategoryFilter(val)
@@ -134,6 +122,20 @@ export default function Home() {
       localStorage.setItem('pos_show_category_filter', val ? 'true' : 'false')
     }
   }
+
+  // Load settings from localStorage on client-side mount to prevent hydration mismatch
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedManual = localStorage.getItem('pos_enable_manual_input')
+      if (storedManual !== null) {
+        setEnableManualInput(storedManual !== 'false')
+      }
+      const storedCategory = localStorage.getItem('pos_show_category_filter')
+      if (storedCategory !== null) {
+        setShowCategoryFilter(storedCategory !== 'false')
+      }
+    }
+  }, [])
 
   // Swipe & Animation Management
   const touchStart = useRef(0)
