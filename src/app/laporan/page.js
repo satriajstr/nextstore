@@ -65,6 +65,12 @@ function ConfirmDialog({ confirm, onYes, onNo }) {
         <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
       </svg>
     )
+  } else if (confirm.icon === 'danger') {
+    iconElement = (
+      <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-red-500 mx-auto" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+      </svg>
+    )
   }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 text-center">
@@ -993,6 +999,32 @@ export default function Laporan() {
     }
   }
 
+  // ─── Hapus Riwayat Harian ────────────────────────────────────────────────
+  const handleDeleteHistory = async (item, e) => {
+    e.stopPropagation()
+    const confirmed = await showConfirm({
+      icon: 'danger',
+      title: 'Hapus Riwayat Ini?',
+      message: `Data rekap tanggal ${new Date(item.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })} akan dihapus permanen.\nTindakan ini tidak bisa dibatalkan.`,
+      labelYes: 'Ya, Hapus',
+      labelNo: 'Batal',
+      danger: true,
+    })
+    if (!confirmed) return
+    try {
+      const { error } = await supabase
+        .from('daily_summary')
+        .delete()
+        .eq('id', item.id)
+        .eq('store_id', profile.store_id)
+      if (error) throw error
+      showToast('Riwayat berhasil dihapus.', 'success')
+      fetchHistory()
+    } catch (err) {
+      showToast('Gagal menghapus riwayat.', 'error')
+    }
+  }
+
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <>
@@ -1218,15 +1250,26 @@ export default function Laporan() {
                             <td className="px-6 py-4 text-right text-slate-400 text-xs">{formatIDR(item.total_modal)}</td>
                             <td className="px-6 py-4 text-right font-black text-xs" style={{ color: primaryColor }}>{formatIDR(item.keuntungan_bersih)}</td>
                             <td className="px-6 py-4 text-center whitespace-nowrap">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); exportDailyDetailCSV(item.date) }}
-                                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[9px] font-extrabold transition-all active:scale-95 flex items-center gap-1 mx-auto shadow-sm"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                                </svg>
-                                Export
-                              </button>
+                              <div className="flex items-center gap-1.5 justify-center">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); exportDailyDetailCSV(item.date) }}
+                                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[9px] font-extrabold transition-all active:scale-95 flex items-center gap-1 shadow-sm"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                                  </svg>
+                                  Export
+                                </button>
+                                <button
+                                  onClick={(e) => handleDeleteHistory(item, e)}
+                                  className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl text-[9px] font-extrabold transition-all active:scale-95 flex items-center gap-1 shadow-sm"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                  </svg>
+                                  Hapus
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}

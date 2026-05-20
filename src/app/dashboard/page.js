@@ -391,7 +391,7 @@ export default function Dashboard() {
               className="border-2 shadow-md shadow-slate-100/50 rounded-[2rem] p-8 mb-8 flex flex-col md:flex-row justify-between items-center gap-6"
               style={{ 
                 borderColor: `${primaryColor}30`,
-                background: `linear-gradient(135deg, ${primaryColor}10 0%, ${primaryColor}04 60%, #ffffff 100%)`
+                background: `linear-gradient(135deg, ${primaryColor}25 0%, ${primaryColor}10 60%, #ffffff 100%)`
               }}
             >
               <div className="text-left w-full md:w-auto">
@@ -459,7 +459,7 @@ export default function Dashboard() {
                 >
                   <div className="flex justify-between items-center mb-4">
                     <div>
-                      <p className="text-sm font-bold text-slate-800">Rekap Harian</p>
+                      <p className="text-sm font-bold text-slate-800">Rekap Penjualan</p>
                       <p className="text-[10px] text-slate-400 font-medium mt-0.5">7 hari terakhir</p>
                     </div>
                     <div className="flex items-center gap-4">
