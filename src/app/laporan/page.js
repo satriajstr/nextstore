@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
 import { getUserProfile, getRole } from '../../lib/auth'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import AdminSidebar from '../../components/AdminSidebar'
 import { useTheme } from '../../lib/ThemeContext'
 
@@ -430,6 +430,7 @@ function DetailTransaksiModal({ date, isOpen, onClose, transactions, loading, fo
 
 export default function Laporan() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { primaryColor } = useTheme()
   const [profile, setProfile] = useState(null)
   const [role, setRole] = useState(null)
@@ -474,6 +475,12 @@ export default function Laporan() {
   const [isClosed, setIsClosed] = useState(false)
   const [closing, setClosing] = useState(false)
   const [history, setHistory] = useState([])
+  const [activeTab, setActiveTab] = useState('hari-ini')
+
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (tab === 'riwayat') setActiveTab('riwayat')
+  }, [searchParams])
 
   // ─── Detail Riwayat Harian States ──────────────────────────────────────────
   const [selectedHistoryDate, setSelectedHistoryDate] = useState(null)
@@ -1045,11 +1052,31 @@ export default function Laporan() {
               </div>
             </section>
 
-            {/* TRANSACTION LIST */}
-            <section className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden mb-8">
-              <div className="p-6 border-b border-slate-100 bg-white flex justify-between items-center">
-                <h3 className="font-bold text-slate-800 text-sm">Detail Transaksi Hari Ini</h3>
-                {transactions.length > 0 && (
+            {/* TABEL DENGAN TAB */}
+            <section className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
+              {/* Tab Header */}
+              <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex gap-0 border-b-0">
+                  {[{ id: 'hari-ini', label: 'Transaksi Hari Ini' }, { id: 'riwayat', label: 'Riwayat Rekap' }].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className="relative px-5 py-2 text-xs font-bold transition-all"
+                      style={activeTab === tab.id
+                        ? { color: primaryColor }
+                        : { color: '#94a3b8' }
+                      }
+                    >
+                      {tab.label}
+                      {activeTab === tab.id && (
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ backgroundColor: primaryColor }} />
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Action button per tab */}
+                {activeTab === 'hari-ini' && transactions.length > 0 && (
                   <button
                     onClick={() => exportDailyDetailCSV(new Date().toISOString().split('T')[0])}
                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all active:scale-95 shadow-md shadow-emerald-600/10 flex items-center gap-1.5"
@@ -1057,164 +1084,157 @@ export default function Laporan() {
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                     </svg>
-                    <span>Export Detail</span>
+                    Export Detail
+                  </button>
+                )}
+                {activeTab === 'riwayat' && (
+                  <button
+                    onClick={exportCSV}
+                    disabled={history.length === 0}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all active:scale-95 shadow-md shadow-emerald-600/10 disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                    Export Riwayat
                   </button>
                 )}
               </div>
-              <div className="overflow-x-auto">
-                {loading ? (
-                  <div className="p-12 text-center text-slate-400">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4" style={{ borderColor: primaryColor }}></div>
-                    <span className="text-xs font-medium">Memuat data...</span>
-                  </div>
-                ) : transactions.length === 0 ? (
-                  <div className="p-12 text-center text-slate-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 mx-auto text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
-                    </svg>
-                    <p className="font-semibold text-xs text-slate-400">Belum ada transaksi hari ini.</p>
-                  </div>
-                ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                        <th className="px-6 py-4">Waktu</th>
-                        <th className="px-6 py-4">Produk yang Dibeli</th>
-                        <th className="px-6 py-4 text-center">Metode</th>
-                        <th className="px-6 py-4 text-right">Total</th>
-                        <th className="px-6 py-4 text-center">Aksi</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100/50">
-                      {transactions.map((trx) => (
-                        <tr key={trx.id} className="hover:bg-slate-50/50 transition-colors align-top">
-                          <td className="px-6 py-4 text-xs text-slate-500 whitespace-nowrap">
-                            <p className="font-semibold text-slate-700">{formatTime(trx.created_at)}</p>
-                            <p className="text-[9px] font-mono text-slate-400 mt-0.5">#{trx.id.slice(0, 8)}</p>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex flex-col gap-1.5">
-                              {trx.transaction_items?.map((item, i) => (
-                                <span key={i} className="text-xs text-slate-600">
-                                  <span className="font-bold text-slate-700">{item.products?.name ?? '—'}</span>
-                                  <span className="text-slate-400 font-semibold"> × {item.quantity}</span>
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded ml-2 font-medium"
-                                        style={{ color: primaryColor, backgroundColor: `${primaryColor}10` }}>
-                                    ({formatIDR(item.subtotal)})
-                                  </span>
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider
-                            ${trx.payment_method === 'Tunai' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                              {trx.payment_method || 'Tunai'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right whitespace-nowrap">
-                            <p className="font-bold text-slate-800 text-xs">{formatIDR(trx.total_harga)}</p>
-                            {trx.diskon > 0 && (
-                              <p className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-100/30 inline-block mt-1">
-                                Diskon -{formatIDR(trx.diskon)}
-                              </p>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <button
-                              onClick={() => handleVoidTransaction(trx)}
-                              disabled={isClosed}
-                              className="px-4 py-1.5 bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-30 disabled:hover:bg-rose-500 text-[9px] font-bold rounded-xl transition-colors uppercase tracking-widest shadow-sm"
-                            >
-                              REFUND
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </section>
 
-            {/* DAILY SUMMARY HISTORY */}
-            <section className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
-                <div>
-                  <h3 className="font-bold text-slate-800 text-sm">Riwayat Rekap Harian</h3>
-                  <span className="text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest mt-1 inline-block border"
-                        style={{ color: primaryColor, borderColor: `${primaryColor}20`, backgroundColor: `${primaryColor}08` }}>
-                    Data Permanen
-                  </span>
-                </div>
-                <button
-                  onClick={exportCSV}
-                  disabled={history.length === 0}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all active:scale-95 shadow-md shadow-emerald-600/10 disabled:opacity-50"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 inline mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                  </svg>
-                  <span>Export Riwayat</span>
-                </button>
-              </div>
+              {/* Tab Content */}
               <div className="overflow-x-auto">
-                {history.length === 0 ? (
-                  <div className="p-12 text-center text-slate-400">
-                    <span className="text-xs font-semibold">Belum ada riwayat penutupan hari.</span>
-                  </div>
-                ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                        <th className="px-6 py-4">Tanggal</th>
-                        <th className="px-6 py-4 text-right">Penjualan</th>
-                        <th className="px-6 py-4 text-right">Modal</th>
-                        <th className="px-6 py-4 text-right">Untung Bersih</th>
-                        <th className="px-6 py-4 text-center">Aksi</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100/50">
-                      {history.map((item) => (
-                        <tr
-                          key={item.id}
-                          onClick={() => fetchDetailTransactions(item.date)}
-                          className="hover:bg-slate-50/50 transition-colors cursor-pointer select-none group"
-                          title="Klik untuk melihat detail transaksi hari ini"
-                        >
-                          <td className="px-6 py-4">
-                            <p className="font-semibold text-slate-700 flex items-center gap-1.5 text-xs">
-                              {new Date(item.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}
-                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                              </svg>
-                            </p>
-                            <p className="text-[9px] text-slate-400 font-mono">#{item.jumlah_transaksi} Trx</p>
-                          </td>
-                          <td className="px-6 py-4 text-right text-slate-600 font-bold text-xs">{formatIDR(item.total_penjualan)}</td>
-                          <td className="px-6 py-4 text-right text-slate-400 text-xs">{formatIDR(item.total_modal)}</td>
-                          <td className="px-6 py-4 text-right font-black text-xs" style={{ color: primaryColor }}>{formatIDR(item.keuntungan_bersih)}</td>
-                          <td className="px-6 py-4 text-center whitespace-nowrap">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                exportDailyDetailCSV(item.date)
-                              }}
-                              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[9px] font-extrabold transition-all active:scale-95 flex items-center gap-1 mx-auto shadow-sm"
-                              title="Export detail transaksi hari ini"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                              </svg>
-                              <span>Export Detail</span>
-                            </button>
-                          </td>
+
+                {/* ── Tab: Transaksi Hari Ini ── */}
+                {activeTab === 'hari-ini' && (
+                  loading ? (
+                    <div className="p-12 text-center text-slate-400">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4" style={{ borderColor: primaryColor }}></div>
+                      <span className="text-xs font-medium">Memuat data...</span>
+                    </div>
+                  ) : transactions.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 mx-auto text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                      </svg>
+                      <p className="font-semibold text-xs text-slate-400">Belum ada transaksi hari ini.</p>
+                    </div>
+                  ) : (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                          <th className="px-6 py-4">Waktu</th>
+                          <th className="px-6 py-4">Produk yang Dibeli</th>
+                          <th className="px-6 py-4 text-center">Metode</th>
+                          <th className="px-6 py-4 text-right">Total</th>
+                          <th className="px-6 py-4 text-center">Aksi</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100/50">
+                        {transactions.map((trx) => (
+                          <tr key={trx.id} className="hover:bg-slate-50/50 transition-colors align-top">
+                            <td className="px-6 py-4 text-xs text-slate-500 whitespace-nowrap">
+                              <p className="font-semibold text-slate-700">{formatTime(trx.created_at)}</p>
+                              <p className="text-[9px] font-mono text-slate-400 mt-0.5">#{trx.id.slice(0, 8)}</p>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-col gap-1.5">
+                                {trx.transaction_items?.map((item, i) => (
+                                  <span key={i} className="text-xs text-slate-600">
+                                    <span className="font-bold text-slate-700">{item.products?.name ?? '—'}</span>
+                                    <span className="text-slate-400 font-semibold"> × {item.quantity}</span>
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded ml-2 font-medium"
+                                          style={{ color: primaryColor, backgroundColor: `${primaryColor}10` }}>
+                                      ({formatIDR(item.subtotal)})
+                                    </span>
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <span className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider
+                              ${trx.payment_method === 'Tunai' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                                {trx.payment_method || 'Tunai'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-right whitespace-nowrap">
+                              <p className="font-bold text-slate-800 text-xs">{formatIDR(trx.total_harga)}</p>
+                              {trx.diskon > 0 && (
+                                <p className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-100/30 inline-block mt-1">
+                                  Diskon -{formatIDR(trx.diskon)}
+                                </p>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <button
+                                onClick={() => handleVoidTransaction(trx)}
+                                disabled={isClosed}
+                                className="px-4 py-1.5 bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-30 disabled:hover:bg-rose-500 text-[9px] font-bold rounded-xl transition-colors uppercase tracking-widest shadow-sm"
+                              >
+                                REFUND
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )
                 )}
+
+                {/* ── Tab: Riwayat Rekap Harian ── */}
+                {activeTab === 'riwayat' && (
+                  history.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400">
+                      <span className="text-xs font-semibold">Belum ada riwayat penutupan hari.</span>
+                    </div>
+                  ) : (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                          <th className="px-6 py-4">Tanggal</th>
+                          <th className="px-6 py-4 text-right">Penjualan</th>
+                          <th className="px-6 py-4 text-right">Modal</th>
+                          <th className="px-6 py-4 text-right">Untung Bersih</th>
+                          <th className="px-6 py-4 text-center">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100/50">
+                        {history.map((item) => (
+                          <tr
+                            key={item.id}
+                            onClick={() => fetchDetailTransactions(item.date)}
+                            className="hover:bg-slate-50/50 transition-colors cursor-pointer select-none group"
+                          >
+                            <td className="px-6 py-4">
+                              <p className="font-semibold text-slate-700 flex items-center gap-1.5 text-xs">
+                                {new Date(item.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}
+                                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                </svg>
+                              </p>
+                              <p className="text-[9px] text-slate-400 font-mono">#{item.jumlah_transaksi} Trx</p>
+                            </td>
+                            <td className="px-6 py-4 text-right text-slate-600 font-bold text-xs">{formatIDR(item.total_penjualan)}</td>
+                            <td className="px-6 py-4 text-right text-slate-400 text-xs">{formatIDR(item.total_modal)}</td>
+                            <td className="px-6 py-4 text-right font-black text-xs" style={{ color: primaryColor }}>{formatIDR(item.keuntungan_bersih)}</td>
+                            <td className="px-6 py-4 text-center whitespace-nowrap">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); exportDailyDetailCSV(item.date) }}
+                                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[9px] font-extrabold transition-all active:scale-95 flex items-center gap-1 mx-auto shadow-sm"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                                </svg>
+                                Export
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )
+                )}
+
               </div>
             </section>
           </div>
