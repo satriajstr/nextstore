@@ -1010,44 +1010,22 @@ export default function Laporan() {
               </div>
             </header>
 
-            {/* SUMMARY CARD */}
-            <section 
-              className="bg-white border-2 shadow-md shadow-slate-100/50 rounded-[2rem] p-8 mb-8 flex flex-col md:flex-row justify-between items-center gap-6"
-              style={{ borderColor: `${primaryColor}30` }}
-            >
-              <div className="text-center md:text-left">
-                <div className="flex items-center gap-2 mb-2 justify-center md:justify-start">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    {isClosed ? 'Rekap Penjualan (HARI DITUTUP)' : 'Total Penjualan Hari Ini'}
-                  </p>
-                  {isClosed && <span className="bg-emerald-500 text-white text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest">Locked</span>}
-                </div>
-                <h2 className="text-4xl md:text-5xl font-black tracking-tight" style={{ color: primaryColor }}>
-                  {formatIDR(totalHariIni)}
-                </h2>
-                <div className="flex gap-4 mt-4 justify-center md:justify-start">
-                  <div className="flex flex-col">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Tunai</span>
-                    <span className="text-base font-bold text-emerald-600">{formatIDR(totalCash)}</span>
-                  </div>
-                  <div className="w-[1px] h-8 bg-slate-200/80 self-center"></div>
-                  <div className="flex flex-col">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">QRIS / Non-Tunai</span>
-                    <span className="text-base font-bold text-red-600">{formatIDR(totalQRIS)}</span>
-                  </div>
-                </div>
+            {/* ACTION BANNER */}
+            <section className="bg-slate-50 border border-slate-100 rounded-[2rem] p-6 mb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-sm">Status Hari Operasional</h3>
+                <p className="text-slate-400 text-xs mt-0.5">
+                  {isClosed 
+                    ? 'Hari ini telah ditutup. Kasir tidak bisa melakukan transaksi baru.' 
+                    : 'Hari operasional aktif. Jangan lupa untuk menutup hari saat selesai.'}
+                </p>
               </div>
 
               <div className="flex gap-4 items-center">
-                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-center min-w-[120px]">
-                  <p className="text-[10px] text-slate-400 mb-1 uppercase font-bold tracking-wider">Transaksi</p>
-                  <p className="text-2xl font-black text-slate-800">{transactions.length}</p>
-                </div>
-
                 {!isClosed ? (
                   <button
                     onClick={handleCloseDay}
-                    disabled={closing || transactions.length === 0}
+                    disabled={closing}
                     className="text-white px-6 py-3.5 rounded-xl font-bold shadow-lg transition-all active:scale-95 disabled:opacity-50 text-xs uppercase tracking-wider"
                     style={{ 
                       backgroundColor: primaryColor, 
@@ -1059,7 +1037,7 @@ export default function Laporan() {
                 ) : (
                   <button
                     onClick={handleOpenDay}
-                    className="bg-emerald-600 text-white px-6 py-3.5 rounded-xl font-bold shadow-lg hover:bg-emerald-700 transition-all active:scale-95 flex flex-col items-center leading-tight text-xs uppercase tracking-wider"
+                    className="bg-emerald-600 text-white px-6 py-3.5 rounded-xl font-bold shadow-lg hover:bg-emerald-700 transition-all active:scale-95 text-xs uppercase tracking-wider"
                   >
                     Buka Hari
                   </button>
