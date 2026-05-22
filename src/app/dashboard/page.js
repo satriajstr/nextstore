@@ -380,15 +380,18 @@ export default function Dashboard() {
       <main className="flex min-h-screen bg-gray-50 text-slate-800 font-sans">
         <AdminSidebar />
         <div className="flex-1 pt-16 md:pt-0 overflow-x-hidden">
-          <div className="max-w-4xl mx-auto p-4 md:p-8">
+          <div className="max-w-6xl mx-auto p-4 md:p-8">
             <header className="mb-8">
               <h1 className="text-3xl font-semibold tracking-tight" style={{ color: primaryColor }}>Dashboard</h1>
-              <p className="text-slate-400 text-sm mt-1">Selamat datang di panel kontrol {storeName}</p>
+              <p className="text-slate-400 text-sm mt-1">Selamat datang, Admin {profile?.full_name ?? storeName}.</p>
             </header>
             
+            {/* CARD TOTAL PENJUALAN + AI ASSISTANT */}
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 mb-8">
+
             {/* EXACT CARD FROM LAPORAN PAGE */}
             <section 
-              className="border-2 shadow-md shadow-slate-100/50 rounded-[2rem] p-8 mb-8 flex flex-col md:flex-row justify-between items-center gap-6"
+              className="border-2 shadow-md shadow-slate-100/50 rounded-[2rem] p-8 flex flex-col md:flex-row justify-between items-center gap-6"
               style={{ 
                 borderColor: `${primaryColor}30`,
                 background: `linear-gradient(135deg, ${primaryColor}25 0%, ${primaryColor}10 60%, #ffffff 100%)`
@@ -445,7 +448,26 @@ export default function Dashboard() {
               </div>
             </section>
 
-            {/* GRAFIK + TRANSAKSI + STOK KRITIS */}
+            {/* AI ASSISTANT CARD */}
+            <section
+              onClick={() => router.push('/owner/assistant-ai')}
+              className="bg-white border border-slate-100 shadow-sm rounded-[2rem] p-6 w-full md:w-[200px] shrink-0 flex flex-col justify-between cursor-pointer transition-all"
+              style={{ outline: '2px solid transparent' }}
+              onMouseEnter={e => e.currentTarget.style.outline = `2px solid ${primaryColor}40`}
+              onMouseLeave={e => e.currentTarget.style.outline = '2px solid transparent'}
+            >
+              <div>
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: `${primaryColor}15` }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                  </svg>
+                </div>
+                <p className="text-xs font-bold text-slate-800 leading-snug">Assistant AI</p>
+                <p className="text-[10px] text-slate-400 font-medium mt-1 leading-relaxed">Analisis bisnis & rekomendasi cerdas untuk toko Anda.</p>
+              </div>
+            </section>
+
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-[1fr_200px_200px] gap-4 mb-8">
 
               {/* Rekap Harian Chart */}

@@ -162,7 +162,7 @@ export default function AdminSidebar() {
         fixed top-0 left-0 h-full z-50 flex flex-col
         w-64 bg-white border-r border-gray-100 shadow-xl
         transition-transform duration-300 ease-in-out
-        md:translate-x-0 md:static md:shadow-none md:z-auto
+        md:translate-x-0 md:sticky md:top-0 md:h-screen md:shadow-none md:z-auto md:shrink-0
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
 
