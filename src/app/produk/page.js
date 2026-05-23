@@ -7,6 +7,7 @@ import { getUserProfile, getRole } from '../../lib/auth'
 import { useRouter } from 'next/navigation'
 import AdminSidebar from '../../components/AdminSidebar'
 import { useTheme } from '../../lib/ThemeContext'
+import { getTodayId } from '../../lib/dateId'
 
 // ─── Toast Component ──────────────────────────────────────────────────────────
 function Toast({ toast, onClose }) {
@@ -306,6 +307,20 @@ export default function Produk() {
   const [search, setSearch] = useState('')
   const [sortByStock, setSortByStock] = useState('none')
   const [filterCategory, setFilterCategory] = useState('Semua')
+  const [criticalThreshold, setCriticalThreshold] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('critical_stock_threshold')
+      return saved ? parseInt(saved) || 3 : 3
+    }
+    return 3
+  })
+  const [filterCriticalOnly, setFilterCriticalOnly] = useState(false)
+
+  // Sync threshold to localStorage
+  useEffect(() => {
+    localStorage.setItem('critical_stock_threshold', criticalThreshold)
+  }, [criticalThreshold])
+
   const [modal, setModal] = useState(null) // { mode: 'add'|'edit', product?: {} }
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
@@ -449,13 +464,15 @@ export default function Produk() {
       return a.name.localeCompare(b.name) // Default abjad
     })
 
+  const displayedProducts = filtered.filter(p => !filterCriticalOnly || (p.stock ?? 0) <= criticalThreshold)
+
   // ─── EXPORT CSV ─────────────────────────────────────────────────────────────
   const exportProductsCSV = () => {
-    if (filtered.length === 0) return
+    if (displayedProducts.length === 0) return
 
     try {
       const headers = ['Nama Produk', 'Kategori', 'Harga Modal', 'Harga Jual', 'Stok']
-      const rows = filtered.map(p => {
+      const rows = displayedProducts.map(p => {
         return [
           `"${p.name}"`,
           `"${p.category || 'Umum'}"`,
@@ -469,7 +486,7 @@ export default function Produk() {
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
-      const dateStr = new Date().toISOString().split('T')[0]
+      const dateStr = getTodayId()
       link.href = url
       link.download = `daftar-produk-${dateStr}.csv`
       link.click()
@@ -516,8 +533,8 @@ export default function Produk() {
               <div>
                 <h1 className="text-3xl font-semibold tracking-tight" style={{ color: primaryColor }}>Kelola Produk</h1>
                 <span className="text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest mt-1 inline-block border"
-                      style={{ color: primaryColor, borderColor: `${primaryColor}20`, backgroundColor: `${primaryColor}08` }}>
-                  {filtered.length} Produk
+                  style={{ color: primaryColor, borderColor: `${primaryColor}20`, backgroundColor: `${primaryColor}08` }}>
+                  {displayedProducts.length} Produk
                 </span>
               </div>
               <div className="flex gap-2 items-start flex-wrap md:flex-nowrap">
@@ -563,7 +580,7 @@ export default function Produk() {
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8 pt-4">
               {[
                 { label: 'Total Produk', value: filtered.length, type: 'total' },
-                { label: 'Stok Kritis (≤3)', value: filtered.filter(p => (p.stock ?? 0) <= 3).length, type: 'critical' },
+                { label: `Stok Kritis (≤${criticalThreshold})`, value: filtered.filter(p => (p.stock ?? 0) <= criticalThreshold).length, type: 'critical' },
                 { label: 'Total Nilai Stok', value: formatIDR(filtered.reduce((a, p) => a + (p.harga_modal * (p.stock ?? 0)), 0)), type: 'value' },
               ].map((stat) => {
                 const getStatIcon = (type) => {
@@ -591,10 +608,58 @@ export default function Produk() {
                   return null
                 }
                 return (
-                  <div key={stat.label} className="bg-white rounded-[2rem] p-6 border-2 shadow-sm transition-all hover:shadow-md" style={{ borderColor: `${primaryColor}20`, boxShadow: `0 4px 20px -2px rgba(148, 163, 184, 0.08)` }}>
-                    <div className="mb-2">{getStatIcon(stat.type)}</div>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">{stat.label}</p>
-                    <p className="text-xl font-bold text-slate-800 tracking-tight">{stat.value}</p>
+                  <div
+                    key={stat.label}
+                    onClick={() => {
+                      if (stat.type === 'critical') {
+                        setFilterCriticalOnly(!filterCriticalOnly)
+                      }
+                    }}
+                    className={`bg-white rounded-[2rem] p-6 border-2 shadow-sm transition-all hover:shadow-md cursor-pointer
+                      ${stat.type === 'critical' && filterCriticalOnly ? 'border-amber-500 bg-amber-50/20' : 'hover:border-slate-300'}`}
+                    style={stat.type !== 'critical' || !filterCriticalOnly ? { borderColor: `${primaryColor}20`, boxShadow: `0 4px 20px -2px rgba(148, 163, 184, 0.08)` } : { boxShadow: `0 4px 20px -2px rgba(245, 158, 11, 0.08)` }}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="mb-2">{getStatIcon(stat.type)}</div>
+                      {stat.type === 'critical' && (
+                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full border transition-all ${filterCriticalOnly ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-slate-50 text-slate-400 border-slate-200'
+                          }`}>
+                          {filterCriticalOnly ? 'Filter Aktif' : 'Klik untuk Filter'}
+                        </span>
+                      )}
+                    </div>
+                    {stat.type === 'critical' ? (
+                      <div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Stok Kritis</p>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-xl font-bold text-slate-800 tracking-tight">{stat.value} Produk</p>
+                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/60 p-1 rounded-xl" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => setCriticalThreshold(prev => Math.max(0, prev - 1))}
+                              className="w-5 h-5 flex items-center justify-center rounded-lg bg-white hover:bg-slate-100 text-slate-500 border border-slate-200/40 hover:text-slate-700 font-bold transition-all active:scale-90 text-[10px]"
+                              title="Kurangi ambang batas"
+                            >
+                              −
+                            </button>
+                            <span className="text-xs font-extrabold text-slate-700 w-4 text-center select-none" title="Ambang batas stok saat ini">
+                              {criticalThreshold}
+                            </span>
+                            <button
+                              onClick={() => setCriticalThreshold(prev => Math.min(100, prev + 1))}
+                              className="w-5 h-5 flex items-center justify-center rounded-lg bg-white hover:bg-slate-100 text-slate-500 border border-slate-200/40 hover:text-slate-700 font-bold transition-all active:scale-90 text-[10px]"
+                              title="Tambah ambang batas"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">{stat.label}</p>
+                        <p className="text-xl font-bold text-slate-800 tracking-tight">{stat.value}</p>
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -612,7 +677,7 @@ export default function Produk() {
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 inline mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                     </svg>
-                    <span>Export CSV</span>
+                    <span>Export Data</span>
                   </button>
                 )}
               </div>
@@ -622,7 +687,7 @@ export default function Produk() {
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4" style={{ borderColor: primaryColor }}></div>
                     Memuat produk...
                   </div>
-                ) : filtered.length === 0 ? (
+                ) : displayedProducts.length === 0 ? (
                   <div className="p-16 text-center text-gray-300">
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
@@ -633,6 +698,7 @@ export default function Produk() {
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 bg-white">
+                        <th className="px-6 py-5 text-center w-12">No</th>
                         <th className="px-6 py-5">Produk & Kategori</th>
                         <th className="px-6 py-5 text-right">Harga Modal</th>
                         <th className="px-6 py-5 text-right">Harga Jual</th>
@@ -641,15 +707,18 @@ export default function Produk() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100/50">
-                      {filtered.map((product) => {
+                      {displayedProducts.map((product, index) => {
 
-                        const isLowStock = (product.stock ?? 0) <= 3
+                        const isLowStock = (product.stock ?? 0) <= criticalThreshold
                         return (
                           <tr key={product.id} className="hover:bg-slate-50/40 transition-colors group">
+                            <td className="px-6 py-5 text-center text-xs font-semibold text-slate-400 w-12">
+                              {index + 1}
+                            </td>
                             <td className="px-6 py-5">
                               <p className="font-semibold text-slate-700 leading-tight mb-1.5 text-xs">{product.name}</p>
                               <span className="text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest"
-                                    style={{ color: primaryColor, backgroundColor: `${primaryColor}10` }}>
+                                style={{ color: primaryColor, backgroundColor: `${primaryColor}10` }}>
                                 {product.category || 'Umum'}
                               </span>
                             </td>

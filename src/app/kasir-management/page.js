@@ -42,6 +42,18 @@ function ConfirmDialog({ confirm, onYes, onNo }) {
         <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
       </svg>
     )
+  } else if (confirm.icon === '🔒') {
+    iconElement = (
+      <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-orange-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+      </svg>
+    )
+  } else if (confirm.icon === '🔓') {
+    iconElement = (
+      <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+      </svg>
+    )
   }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -154,6 +166,35 @@ export default function KasirManagement() {
     }
   }
 
+  const handleToggleStatus = async (ksr) => {
+    const isActive = ksr.status === 'approved'
+    const confirmed = await showConfirm({
+      icon: isActive ? '🔒' : '🔓',
+      title: isActive ? 'Nonaktifkan Kasir?' : 'Aktifkan Kasir?',
+      message: isActive
+        ? `Akun kasir "${ksr.full_name || 'Tanpa Nama'}" akan dinonaktifkan. Kasir tidak akan bisa masuk hingga diaktifkan kembali.`
+        : `Akun kasir "${ksr.full_name || 'Tanpa Nama'}" akan diaktifkan kembali dan bisa langsung masuk ke sistem.`,
+      labelYes: isActive ? 'Ya, Nonaktifkan' : 'Ya, Aktifkan',
+      labelNo: 'Batal',
+      danger: isActive,
+    })
+
+    if (!confirmed) return
+
+    const newStatus = isActive ? 'disabled' : 'approved'
+    const { error } = await supabase
+      .from('profiles')
+      .update({ status: newStatus })
+      .eq('user_id', ksr.user_id)
+
+    if (error) {
+      showToast('Gagal mengubah status kasir.', 'error')
+    } else {
+      showToast(isActive ? 'Kasir berhasil dinonaktifkan.' : 'Kasir berhasil diaktifkan kembali.')
+      fetchCashiers()
+    }
+  }
+
   const handleDeleteCashier = async (userId) => {
     const confirmed = await showConfirm({
       icon: '🗑️',
@@ -206,13 +247,13 @@ export default function KasirManagement() {
         <AdminSidebar />
         <div className="flex-1 pt-16 md:pt-0 overflow-x-hidden">
           <div className="max-w-5xl mx-auto p-4 md:p-8">
-            
+
             {/* HEADER */}
             <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md -mx-4 md:-mx-8 px-4 md:px-8 py-6 mb-4 flex justify-between items-center border-b border-slate-100">
               <div>
                 <h1 className="text-3xl font-semibold tracking-tight" style={{ color: primaryColor }}>Manajemen Kasir</h1>
                 <span className="text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest mt-1 inline-block border"
-                      style={{ color: primaryColor, borderColor: `${primaryColor}20`, backgroundColor: `${primaryColor}08` }}>
+                  style={{ color: primaryColor, borderColor: `${primaryColor}20`, backgroundColor: `${primaryColor}08` }}>
                   {cashiers.length} Kasir Terdaftar
                 </span>
               </div>
@@ -227,11 +268,8 @@ export default function KasirManagement() {
                   </svg>
                   Kode Registrasi Kasir
                 </h2>
-                <p className="text-xs text-slate-400 leading-relaxed mb-6">
-                  Berikan kode di bawah ini kepada calon kasir Anda. Mereka wajib memasukkan kode ini saat mendaftar akun agar terhubung langsung dengan toko Anda.
-                </p>
                 <div className="rounded-2xl p-6 text-center border-2 border-dashed relative group transition-all"
-                     style={{ backgroundColor: `${primaryColor}05`, borderColor: `${primaryColor}25` }}>
+                  style={{ backgroundColor: `${primaryColor}05`, borderColor: `${primaryColor}25` }}>
                   <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: primaryColor }}>Kode Registrasi Toko</p>
                   <code className="text-lg font-black tracking-wider break-all block mb-4 text-slate-800">
                     {profile?.store_id}
@@ -328,20 +366,35 @@ export default function KasirManagement() {
                             </td>
                             <td className="px-6 py-5">
                               <span className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-widest border
-                                ${ksr.status === 'approved' 
-                                  ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
-                                  : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
-                                {ksr.status === 'approved' ? 'Aktif' : 'Pending'}
+                                ${ksr.status === 'approved'
+                                  ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                  : ksr.status === 'disabled'
+                                    ? 'bg-rose-50 text-rose-600 border-rose-100'
+                                    : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                                {ksr.status === 'approved' ? 'Aktif' : ksr.status === 'disabled' ? 'Nonaktif' : 'Pending'}
                               </span>
                             </td>
                             <td className="px-6 py-5">
-                              <div className="flex gap-2 justify-center">
-                                {ksr.status !== 'approved' && (
+                              <div className="flex gap-2 justify-center flex-wrap">
+                                {/* Approve button for pending cashiers */}
+                                {ksr.status === 'pending' && (
                                   <button
                                     onClick={() => handleUpdateStatus(ksr.user_id, 'approved')}
                                     className="px-3 py-1.5 bg-emerald-600 text-white text-[9px] font-bold rounded-xl hover:bg-emerald-700 transition-all active:scale-95 shadow-md shadow-emerald-600/10"
                                   >
                                     SETUJUI
+                                  </button>
+                                )}
+                                {/* Toggle active/disabled for approved or disabled cashiers */}
+                                {(ksr.status === 'approved' || ksr.status === 'disabled') && (
+                                  <button
+                                    onClick={() => handleToggleStatus(ksr)}
+                                    className={`px-3 py-1.5 text-[9px] font-bold rounded-xl transition-all active:scale-95 shadow-md
+                                      ${ksr.status === 'approved'
+                                        ? 'bg-orange-50 text-orange-600 hover:bg-orange-100 shadow-orange-50'
+                                        : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 shadow-emerald-50'}`}
+                                  >
+                                    {ksr.status === 'approved' ? 'NONAKTIFKAN' : 'AKTIFKAN'}
                                   </button>
                                 )}
                                 <button

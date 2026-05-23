@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
 import { getUserProfile, getRole } from '../../lib/auth'
 import { useRouter, useSearchParams } from 'next/navigation'
 import AdminSidebar from '../../components/AdminSidebar'
+import SalesLineChart, { CHART_DAY_OPTIONS } from '../../components/SalesLineChart'
 import { useTheme } from '../../lib/ThemeContext'
+import { getTodayId } from '../../lib/dateId'
 
 // ─── Custom Toast Component ──────────────────────────────────────────────────
 function Toast({ toast, onClose }) {
@@ -436,11 +438,31 @@ function DetailTransaksiModal({ date, isOpen, onClose, transactions, loading, fo
 
 export default function Laporan() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const { primaryColor } = useTheme()
   const [profile, setProfile] = useState(null)
   const [role, setRole] = useState(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
+  const [query, setQuery] = useState({ tab: null, grafik: null, days: null })
+
+  const handleQueryChange = useCallback((next) => {
+    setQuery((prev) => {
+      if (prev.tab === next.tab && prev.grafik === next.grafik && prev.days === next.days) return prev
+      return next
+    })
+  }, [])
+
+  function QuerySync({ onChange }) {
+    const searchParams = useSearchParams()
+    const key = searchParams.toString()
+    useEffect(() => {
+      onChange({
+        tab: searchParams.get('tab'),
+        grafik: searchParams.get('grafik'),
+        days: searchParams.get('days'),
+      })
+    }, [key, onChange])
+    return null
+  }
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -481,12 +503,37 @@ export default function Laporan() {
   const [isClosed, setIsClosed] = useState(false)
   const [closing, setClosing] = useState(false)
   const [history, setHistory] = useState([])
+  const [historyChart, setHistoryChart] = useState([])
+  const [chartDays, setChartDays] = useState(7)
+  const [loadingChart, setLoadingChart] = useState(false)
   const [activeTab, setActiveTab] = useState('hari-ini')
+  const [showChart, setShowChart] = useState(false)
+  const chartSectionRef = useRef(null)
 
   useEffect(() => {
-    const tab = searchParams.get('tab')
-    if (tab === 'riwayat') setActiveTab('riwayat')
-  }, [searchParams])
+    const tab = query.tab
+    if (tab === 'riwayat') {
+      setActiveTab('riwayat')
+      setShowChart(query.grafik === '1')
+    } else {
+      setActiveTab('hari-ini')
+      setShowChart(false)
+    }
+
+    const daysParam = parseInt(query.days, 10)
+    if (CHART_DAY_OPTIONS.some((o) => o.value === daysParam)) {
+      setChartDays(daysParam)
+    }
+  }, [query.tab, query.grafik, query.days])
+
+  useEffect(() => {
+    if (!checkingAuth && query.tab === 'riwayat' && query.grafik === '1' && chartSectionRef.current) {
+      const t = setTimeout(() => {
+        chartSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 350)
+      return () => clearTimeout(t)
+    }
+  }, [checkingAuth, query.tab, query.grafik])
 
   // ─── Detail Riwayat Harian States ──────────────────────────────────────────
   const [selectedHistoryDate, setSelectedHistoryDate] = useState(null)
@@ -523,7 +570,9 @@ export default function Laporan() {
   const fetchTransactions = useCallback(async () => {
     if (!profile?.store_id) return
     setLoading(true)
-    const todayStr = new Date().toISOString().split('T')[0]
+    const todayStr = getTodayId()
+    const startLocal = new Date(`${todayStr}T00:00:00+07:00`).toISOString()
+    const endLocal = new Date(new Date(`${todayStr}T00:00:00+07:00`).getTime() + 86400000).toISOString()
     const { data, error } = await supabase
       .from('transactions')
       .select(`
@@ -534,7 +583,8 @@ export default function Laporan() {
         )
       `)
       .eq('store_id', profile.store_id)
-      .gte('created_at', todayStr)
+      .gte('created_at', startLocal)
+      .lt('created_at', endLocal)
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -558,9 +608,33 @@ export default function Laporan() {
       .from('daily_summary')
       .select('*')
       .eq('store_id', profile.store_id)
+      .eq('status', 'closed')
+      .gt('jumlah_transaksi', 0)
       .order('date', { ascending: false })
     if (data) setHistory(data)
   }, [profile?.store_id])
+
+  const fetchChartHistory = useCallback(async () => {
+    if (!profile?.store_id) return
+    setLoadingChart(true)
+    const { data } = await supabase
+      .from('daily_summary')
+      .select('date, total_penjualan, keuntungan_bersih')
+      .eq('store_id', profile.store_id)
+      .eq('status', 'closed')
+      .gt('jumlah_transaksi', 0)
+      .order('date', { ascending: false })
+      .limit(chartDays)
+    if (data) setHistoryChart(data.reverse())
+    setLoadingChart(false)
+  }, [profile?.store_id, chartDays])
+
+  const handleChartDaysChange = (days) => {
+    setChartDays(days)
+    setShowChart(true)
+    setActiveTab('riwayat')
+    router.replace(`/laporan?tab=riwayat&grafik=1&days=${days}`, { scroll: false })
+  }
 
   const fetchDetailTransactions = useCallback(async (dateStr) => {
     if (!profile?.store_id) return
@@ -597,7 +671,9 @@ export default function Laporan() {
 
   const checkStatus = useCallback(async () => {
     if (!profile?.store_id) return
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayId()
+    const startLocal = new Date(`${today}T00:00:00+07:00`).toISOString()
+    const endLocal = new Date(new Date(`${today}T00:00:00+07:00`).getTime() + 86400000).toISOString()
     const { data } = await supabase
       .from('daily_summary')
       .select('status')
@@ -612,6 +688,12 @@ export default function Laporan() {
     checkStatus()
     fetchHistory()
   }, [fetchTransactions, checkStatus, fetchHistory])
+
+  useEffect(() => {
+    if (profile?.store_id && activeTab === 'riwayat' && showChart) {
+      fetchChartHistory()
+    }
+  }, [profile?.store_id, chartDays, showChart, activeTab, fetchChartHistory])
 
   // ─── Batal Transaksi ──────────────────────────────────────────────────────
   const handleVoidTransaction = async (trx) => {
@@ -706,7 +788,7 @@ export default function Laporan() {
     if (!confirmed) return
 
     setClosing(true)
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayId()
 
     try {
       const { data: existing } = await supabase
@@ -807,7 +889,7 @@ export default function Laporan() {
       danger: true,
     })
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayId()
 
     try {
       if (resetData) {
@@ -842,7 +924,8 @@ export default function Laporan() {
           .from('transactions')
           .delete()
           .eq('store_id', profile.store_id)
-          .gte('created_at', today)
+          .gte('created_at', startLocal)
+          .lt('created_at', endLocal)
         if (trxErr) throw trxErr
 
         showToast('Hari dibuka. Transaksi direset. Penjualan baru akan diakumulasi.', 'success')
@@ -891,7 +974,7 @@ export default function Laporan() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `laporan-penjualan-${new Date().toISOString().split('T')[0]}.csv`
+    link.download = `laporan-penjualan-${getTodayId()}.csv`
     link.click()
     URL.revokeObjectURL(url)
   }
@@ -1029,6 +1112,9 @@ export default function Laporan() {
   return (
     <>
       <Toast toast={toast} onClose={() => setToast(null)} />
+      <Suspense fallback={null}>
+        <QuerySync onChange={handleQueryChange} />
+      </Suspense>
       {checkingAuth && (
         <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: primaryColor }}></div>
@@ -1059,30 +1145,77 @@ export default function Laporan() {
                     : 'Hari operasional aktif. Jangan lupa untuk menutup hari saat selesai.'}
                 </p>
               </div>
-
-              <div className="flex gap-4 items-center">
-                {!isClosed ? (
-                  <button
-                    onClick={handleCloseDay}
-                    disabled={closing}
-                    className="text-white px-6 py-3.5 rounded-xl font-bold shadow-lg transition-all active:scale-95 disabled:opacity-50 text-xs uppercase tracking-wider"
-                    style={{ 
-                      backgroundColor: primaryColor, 
-                      boxShadow: `0 4px 12px ${primaryColor}30` 
-                    }}
-                  >
-                    {closing ? '...' : 'Tutup Hari'}
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleOpenDay}
-                    className="bg-emerald-600 text-white px-6 py-3.5 rounded-xl font-bold shadow-lg hover:bg-emerald-700 transition-all active:scale-95 text-xs uppercase tracking-wider"
-                  >
-                    Buka Hari
-                  </button>
-                )}
-              </div>
             </section>
+
+            {/* Grafik Rekap Penjualan */}
+            {activeTab === 'riwayat' && showChart && (
+              <section
+                ref={chartSectionRef}
+                className="bg-white border border-slate-100 shadow-sm rounded-[2rem] p-6 mb-8 scroll-mt-24"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${primaryColor}10` }}>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4" style={{ color: primaryColor }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">Rekap Penjualan</p>
+                      <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                        {chartDays} hari terakhir
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-5 h-[2px] rounded" style={{ backgroundColor: primaryColor }} />
+                        <span className="text-[9px] text-slate-400 font-semibold">Penjualan</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-5 h-[2px] rounded border-t-2 border-dashed" style={{ borderColor: primaryColor, opacity: 0.45 }} />
+                        <span className="text-[9px] text-slate-400 font-semibold">Keuntungan</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1 p-1 bg-slate-50 rounded-xl border border-slate-100">
+                      {CHART_DAY_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => handleChartDaysChange(opt.value)}
+                          className="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all"
+                          style={
+                            chartDays === opt.value
+                              ? { backgroundColor: primaryColor, color: '#fff', boxShadow: `0 2px 8px ${primaryColor}35` }
+                              : { color: '#94a3b8' }
+                          }
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {loadingChart ? (
+                  <div className="py-12 flex justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: primaryColor }} />
+                  </div>
+                ) : historyChart.length < 2 ? (
+                  <div className="py-10 text-center text-slate-400 text-xs font-semibold">
+                    Belum cukup data rekap untuk menampilkan grafik (minimal 2 hari).
+                  </div>
+                ) : (
+                  <SalesLineChart
+                    data={historyChart}
+                    primaryColor={primaryColor}
+                    formatIDR={formatIDR}
+                    height={chartDays > 14 ? 130 : 110}
+                  />
+                )}
+              </section>
+            )}
 
             {/* TABEL DENGAN TAB */}
             <section className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
@@ -1092,7 +1225,16 @@ export default function Laporan() {
                   {[{ id: 'hari-ini', label: 'Transaksi Hari Ini' }, { id: 'riwayat', label: 'Riwayat Rekap' }].map(tab => (
                     <button
                       key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
+                      onClick={() => {
+                        setActiveTab(tab.id)
+                        if (tab.id === 'riwayat') {
+                          setShowChart(true)
+                          router.replace(`/laporan?tab=riwayat&grafik=1&days=${chartDays}`, { scroll: false })
+                        } else {
+                          setShowChart(false)
+                          router.replace('/laporan', { scroll: false })
+                        }
+                      }}
                       className="relative px-5 py-2 text-xs font-bold transition-all"
                       style={activeTab === tab.id
                         ? { color: primaryColor }
@@ -1110,7 +1252,7 @@ export default function Laporan() {
                 {/* Action button per tab */}
                 {activeTab === 'hari-ini' && transactions.length > 0 && (
                   <button
-                    onClick={() => exportDailyDetailCSV(new Date().toISOString().split('T')[0])}
+                    onClick={() => exportDailyDetailCSV(getTodayId())}
                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all active:scale-95 shadow-md shadow-emerald-600/10 flex items-center gap-1.5"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
@@ -1151,7 +1293,29 @@ export default function Laporan() {
                       <p className="font-semibold text-xs text-slate-400">Belum ada transaksi hari ini.</p>
                     </div>
                   ) : (
-                    <table className="w-full text-left border-collapse">
+                    <>
+                      <div className="px-6 pt-6 pb-4 border-b border-slate-100">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div
+                            className="rounded-2xl border border-slate-100 px-4 py-3"
+                            style={isClosed ? { backgroundColor: 'rgba(148, 163, 184, 0.12)' } : { backgroundColor: 'rgba(248, 250, 252, 0.4)' }}
+                          >
+                            <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Total Hari Ini</p>
+                            <p className={`mt-1 text-sm font-black ${isClosed ? 'text-slate-500' : 'text-slate-800'}`}>{formatIDR(totalHariIni)}</p>
+                            <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{transactions.length} trx</p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-100 bg-slate-50/40 px-4 py-3">
+                            <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Tunai</p>
+                            <p className="mt-1 text-sm font-black text-emerald-700">{formatIDR(totalCash)}</p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-100 bg-slate-50/40 px-4 py-3">
+                            <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">QRIS</p>
+                            <p className="mt-1 text-sm font-black text-rose-600">{formatIDR(totalQRIS)}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
                           <th className="px-6 py-4">Waktu</th>
@@ -1209,6 +1373,7 @@ export default function Laporan() {
                         ))}
                       </tbody>
                     </table>
+                    </>
                   )
                 )}
 
