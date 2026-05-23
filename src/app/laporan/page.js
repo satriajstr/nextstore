@@ -436,33 +436,13 @@ function DetailTransaksiModal({ date, isOpen, onClose, transactions, loading, fo
   )
 }
 
-export default function Laporan() {
+function LaporanContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { primaryColor } = useTheme()
   const [profile, setProfile] = useState(null)
   const [role, setRole] = useState(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
-  const [query, setQuery] = useState({ tab: null, grafik: null, days: null })
-
-  const handleQueryChange = useCallback((next) => {
-    setQuery((prev) => {
-      if (prev.tab === next.tab && prev.grafik === next.grafik && prev.days === next.days) return prev
-      return next
-    })
-  }, [])
-
-  function QuerySync({ onChange }) {
-    const searchParams = useSearchParams()
-    const key = searchParams.toString()
-    useEffect(() => {
-      onChange({
-        tab: searchParams.get('tab'),
-        grafik: searchParams.get('grafik'),
-        days: searchParams.get('days'),
-      })
-    }, [key, onChange])
-    return null
-  }
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -511,29 +491,29 @@ export default function Laporan() {
   const chartSectionRef = useRef(null)
 
   useEffect(() => {
-    const tab = query.tab
+    const tab = searchParams.get('tab')
     if (tab === 'riwayat') {
       setActiveTab('riwayat')
-      setShowChart(query.grafik === '1')
+      setShowChart(searchParams.get('grafik') === '1')
     } else {
       setActiveTab('hari-ini')
       setShowChart(false)
     }
 
-    const daysParam = parseInt(query.days, 10)
+    const daysParam = parseInt(searchParams.get('days'), 10)
     if (CHART_DAY_OPTIONS.some((o) => o.value === daysParam)) {
       setChartDays(daysParam)
     }
-  }, [query.tab, query.grafik, query.days])
+  }, [searchParams])
 
   useEffect(() => {
-    if (!checkingAuth && query.tab === 'riwayat' && query.grafik === '1' && chartSectionRef.current) {
+    if (!checkingAuth && searchParams.get('tab') === 'riwayat' && searchParams.get('grafik') === '1' && chartSectionRef.current) {
       const t = setTimeout(() => {
         chartSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 350)
       return () => clearTimeout(t)
     }
-  }, [checkingAuth, query.tab, query.grafik])
+  }, [checkingAuth, searchParams])
 
   // ─── Detail Riwayat Harian States ──────────────────────────────────────────
   const [selectedHistoryDate, setSelectedHistoryDate] = useState(null)
@@ -617,14 +597,13 @@ export default function Laporan() {
   const fetchChartHistory = useCallback(async () => {
     if (!profile?.store_id) return
     setLoadingChart(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('daily_summary')
       .select('date, total_penjualan, keuntungan_bersih')
       .eq('store_id', profile.store_id)
-      .eq('status', 'closed')
-      .gt('jumlah_transaksi', 0)
       .order('date', { ascending: false })
       .limit(chartDays)
+    if (error) console.error('Error fetching chart history:', error)
     if (data) setHistoryChart(data.reverse())
     setLoadingChart(false)
   }, [profile?.store_id, chartDays])
@@ -1112,9 +1091,6 @@ export default function Laporan() {
   return (
     <>
       <Toast toast={toast} onClose={() => setToast(null)} />
-      <Suspense fallback={null}>
-        <QuerySync onChange={handleQueryChange} />
-      </Suspense>
       {checkingAuth && (
         <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: primaryColor }}></div>
@@ -1462,5 +1438,13 @@ export default function Laporan() {
         primaryColor={primaryColor}
       />
     </>
+  )
+}
+
+export default function LaporanPage() {
+  return (
+    <Suspense fallback={null}>
+      <LaporanContent />
+    </Suspense>
   )
 }
