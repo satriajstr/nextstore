@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef, Suspense } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'react'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
 import { getUserProfile, getRole } from '../../lib/auth'
 import { useRouter, useSearchParams } from 'next/navigation'
 import AdminSidebar from '../../components/AdminSidebar'
 import SalesLineChart, { CHART_DAY_OPTIONS } from '../../components/SalesLineChart'
+import HourlySalesChart from '../../components/HourlySalesChart'
 import { useTheme } from '../../lib/ThemeContext'
 import { getTodayId } from '../../lib/dateId'
 
@@ -434,6 +435,46 @@ function DetailTransaksiModal({ date, isOpen, onClose, transactions, loading, fo
       </div>
     </div>
   )
+}
+
+function getHourJakarta(dateStr) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    hour: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(dateStr))
+  const rawHour = parseInt(parts.find((part) => part.type === 'hour')?.value ?? '0', 10)
+  return rawHour === 24 ? 0 : rawHour
+}
+
+function formatHourLabel(hour) {
+  return `${String(hour).padStart(2, '0')}:00`
+}
+
+function buildHourlySalesData(transactions) {
+  if (!transactions || transactions.length === 0) return []
+
+  const hourly = new Map()
+  let minHour = 23
+  let maxHour = 0
+
+  transactions.forEach((trx) => {
+    const hour = getHourJakarta(trx.created_at)
+    minHour = Math.min(minHour, hour)
+    maxHour = Math.max(maxHour, hour)
+
+    const current = hourly.get(hour) || { hour: formatHourLabel(hour), total: 0, count: 0 }
+    current.total += trx.total_harga || 0
+    current.count += 1
+    hourly.set(hour, current)
+  })
+
+  const data = []
+  for (let hour = minHour; hour <= maxHour; hour += 1) {
+    data.push(hourly.get(hour) || { hour: formatHourLabel(hour), total: 0, count: 0 })
+  }
+
+  return data
 }
 
 function LaporanContent() {
@@ -938,6 +979,8 @@ function LaporanContent() {
     hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta'
   })
 
+  const hourlySalesData = useMemo(() => buildHourlySalesData(transactions), [transactions])
+
   const exportCSV = () => {
     if (history.length === 0) {
       showToast('Belum ada data riwayat untuk diekspor.', 'error')
@@ -1290,6 +1333,34 @@ function LaporanContent() {
                           </div>
                         </div>
                       </div>
+
+                      {hourlySalesData.length > 0 && (
+                        <div className="px-6 py-5 border-b border-slate-100">
+                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
+                            <div className="flex items-center gap-2">
+                              <div className="p-1.5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${primaryColor}10` }}>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125C16.5 3.504 17.004 3 17.625 3h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
+                                </svg>
+                              </div>
+                              <div>
+                                <p className="text-sm font-bold text-slate-800">Penjualan Per Jam</p>
+                                <p className="text-[10px] text-slate-400 font-medium mt-0.5">Total transaksi hari ini berdasarkan waktu</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-5 h-[2px] rounded" style={{ backgroundColor: primaryColor }} />
+                              <span className="text-[9px] text-slate-400 font-semibold">Penjualan</span>
+                            </div>
+                          </div>
+                          <HourlySalesChart
+                            data={hourlySalesData}
+                            primaryColor={primaryColor}
+                            formatIDR={formatIDR}
+                            height={115}
+                          />
+                        </div>
+                      )}
 
                       <table className="w-full text-left border-collapse">
                       <thead>
