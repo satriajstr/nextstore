@@ -6,6 +6,7 @@ import { getRole, getUserProfile } from '../../lib/auth'
 import { useRouter } from 'next/navigation'
 import { useTheme, THEME_DEFAULTS } from '../../lib/ThemeContext'
 import AdminSidebar from '../../components/AdminSidebar'
+import { formatTimeID } from '../../lib/storeHours'
 
 const COLOR_PRESETS = [
   { name: 'Mawar Pink', value: '#ec4899', emoji: '🌸' },
@@ -37,6 +38,9 @@ export default function Kustomisasi() {
   const [customColor, setCustomColor] = useState('')
   const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [hoursEnabled, setHoursEnabled] = useState(false)
+  const [openTime, setOpenTime] = useState('08:00')
+  const [closeTime, setCloseTime] = useState('17:00')
 
   // Auth & Initial Data Load
   useEffect(() => {
@@ -51,7 +55,7 @@ export default function Kustomisasi() {
       // Fetch current store settings from DB
       const { data: store } = await supabase
         .from('stores')
-        .select('name, primary_color')
+        .select('name, primary_color, open_time, close_time')
         .eq('id', userProfile.store_id)
         .single()
 
@@ -59,6 +63,10 @@ export default function Kustomisasi() {
         setStoreName(store.name)
         setSelectedColor(store.primary_color || currentColor)
         setCustomColor(store.primary_color || currentColor)
+        const hasHours = Boolean(store.open_time && store.close_time)
+        setHoursEnabled(hasHours)
+        if (store.open_time) setOpenTime(formatTimeID(store.open_time))
+        if (store.close_time) setCloseTime(formatTimeID(store.close_time))
       }
 
       setCheckingAuth(false)
@@ -70,16 +78,25 @@ export default function Kustomisasi() {
 
   const handleSave = async () => {
     if (!storeName.trim()) return
+    if (hoursEnabled && openTime === closeTime) {
+      alert('Jam buka dan tutup tidak boleh sama.')
+      return
+    }
     setLoading(true)
 
     const userProfile = await getUserProfile()
+
+    const hoursPayload = hoursEnabled
+      ? { open_time: openTime, close_time: closeTime }
+      : { open_time: null, close_time: null }
 
     // 1. Update Database
     const { error } = await supabase
       .from('stores')
       .update({
         name: storeName.trim(),
-        primary_color: activeColor
+        primary_color: activeColor,
+        ...hoursPayload,
       })
       .eq('id', userProfile.store_id)
 
@@ -98,6 +115,9 @@ export default function Kustomisasi() {
     setStoreName(THEME_DEFAULTS.storeName)
     setSelectedColor(THEME_DEFAULTS.primaryColor)
     setCustomColor(THEME_DEFAULTS.primaryColor)
+    setHoursEnabled(false)
+    setOpenTime('08:00')
+    setCloseTime('17:00')
   }
 
   if (checkingAuth) {
@@ -120,10 +140,80 @@ export default function Kustomisasi() {
             <h1 className="text-3xl font-semibold tracking-tight" style={{ color: activeColor }}>
               Kustomisasi Toko
             </h1>
-            <p className="text-gray-400 text-sm mt-1">Sesuaikan tampilan dan identitas toko Anda</p>
+            <p className="text-gray-400 text-sm mt-1">Sesuaikan tampilan, identitas, dan jam operasional toko Anda</p>
           </header>
 
           <div className="space-y-6">
+
+            {/* ── Jam Operasional ─────────────────────────── */}
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 md:p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
+                  style={{ backgroundColor: activeColor + '20' }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" style={{ color: activeColor }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="font-bold text-gray-800 text-base">Jam Operasional</h2>
+                  <p className="text-gray-400 text-xs">Kasir hanya bisa mengakses POS di jam ini (WIB)</p>
+                </div>
+              </div>
+
+              <label className="flex items-center gap-3 cursor-pointer mb-6 p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                <input
+                  type="checkbox"
+                  checked={hoursEnabled}
+                  onChange={(e) => setHoursEnabled(e.target.checked)}
+                  className="w-5 h-5 rounded accent-pink-500"
+                  style={{ accentColor: activeColor }}
+                />
+                <div>
+                  <p className="font-bold text-gray-800 text-sm">Aktifkan batasan jam operasional</p>
+                  <p className="text-gray-400 text-xs mt-0.5">Nonaktif = kasir bisa akses kapan saja</p>
+                </div>
+              </label>
+
+              {hoursEnabled && (
+                <div className="space-y-4 animate-fade-in">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">
+                        Jam Buka
+                      </label>
+                      <input
+                        type="time"
+                        value={openTime}
+                        onChange={(e) => setOpenTime(e.target.value)}
+                        className="w-full px-4 py-3.5 rounded-2xl border border-gray-200 bg-gray-50/50 focus:outline-none text-gray-800 font-semibold text-sm"
+                        onFocus={(e) => { e.target.style.borderColor = activeColor }}
+                        onBlur={(e) => { e.target.style.borderColor = '#e5e7eb' }}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">
+                        Jam Tutup
+                      </label>
+                      <input
+                        type="time"
+                        value={closeTime}
+                        onChange={(e) => setCloseTime(e.target.value)}
+                        className="w-full px-4 py-3.5 rounded-2xl border border-gray-200 bg-gray-50/50 focus:outline-none text-gray-800 font-semibold text-sm"
+                        onFocus={(e) => { e.target.style.borderColor = activeColor }}
+                        onBlur={(e) => { e.target.style.borderColor = '#e5e7eb' }}
+                      />
+                    </div>
+                  </div>
+                  <div className="p-4 rounded-2xl border border-dashed text-sm"
+                    style={{ borderColor: activeColor + '40', backgroundColor: activeColor + '08', color: activeColor }}>
+                    <p className="font-semibold">Pratinjau jadwal</p>
+                    <p className="text-xs mt-1 opacity-80">
+                      Kasir dapat mengakses sistem dari <strong>{openTime}</strong> hingga <strong>{closeTime}</strong> WIB setiap hari.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* ── Store Name ──────────────────────────────── */}
             <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 md:p-8">

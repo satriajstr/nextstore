@@ -26,7 +26,7 @@ export default function Login() {
   const redirectByRole = async () => {
     const role = await getRole()
     if (role === 'admin') {
-      router.replace('/produk')
+      router.replace('/dashboard')
     } else if (role === 'kasir') {
       router.replace('/')
     } else {

@@ -48,6 +48,8 @@ CREATE TABLE public.stores (
   owner_id uuid REFERENCES auth.users(id),
   created_at timestamp with time zone DEFAULT now(),
   primary_color text DEFAULT '#ec4899'::text,
+  open_time time,  -- Jam buka (WIB). NULL = kasir bisa akses kapan saja
+  close_time time, -- Jam tutup (WIB). NULL = kasir bisa akses kapan saja
   CONSTRAINT stores_pkey PRIMARY KEY (id)
 );
 

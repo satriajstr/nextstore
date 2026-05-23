@@ -6,18 +6,19 @@ import { supabase } from '../../../lib/supabase'
 import { getUserProfile } from '../../../lib/auth'
 import AdminSidebar from '../../../components/AdminSidebar'
 import { useTheme } from '../../../lib/ThemeContext'
+import { getTodayId, formatDateId } from '../../../lib/dateId'
 
 const fmt = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n ?? 0)
 
 // ─── Client-side analytics engine (sama pola dengan produk page) ───────────────
-async function fetchAnalytics(storeId) {
+async function fetchAnalytics(storeId, criticalThreshold = 3) {
   const now = new Date()
-  const todayStr = now.toISOString().split('T')[0]
+  const todayStr = getTodayId()
 
   const d7 = new Date(now); d7.setDate(now.getDate() - 7)
   const d30 = new Date(now); d30.setDate(now.getDate() - 30)
   const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1)
-  const yesterdayStr = yesterday.toISOString().split('T')[0]
+  const yesterdayStr = formatDateId(yesterday)
 
   // 1. Fetch products — persis seperti produk page
   const { data: products } = await supabase
@@ -31,7 +32,7 @@ async function fetchAnalytics(storeId) {
     .from('transactions')
     .select('id, total_harga, payment_method')
     .eq('store_id', storeId)
-    .gte('created_at', todayStr)
+    .gte('created_at', new Date(`${todayStr}T00:00:00+07:00`).toISOString())
 
   // 3. 7-day transaction IDs
   const { data: trx7d } = await supabase
@@ -75,7 +76,7 @@ async function fetchAnalytics(storeId) {
     .from('daily_summary')
     .select('date, total_penjualan, jumlah_transaksi, keuntungan_bersih')
     .eq('store_id', storeId)
-    .gte('date', d7.toISOString().split('T')[0])
+    .gte('date', formatDateId(d7))
     .order('date', { ascending: false })
 
   // 8. Yesterday summary
@@ -125,7 +126,7 @@ async function fetchAnalytics(storeId) {
     }))
 
   const lowStock = (products || [])
-    .filter(p => p.stock !== null && p.stock <= 3)
+    .filter(p => p.stock !== null && p.stock <= criticalThreshold)
     .sort((a, b) => a.stock - b.stock)
     .slice(0, 8)
     .map(p => ({ name: p.name, category: p.category ?? 'Umum', stock: p.stock, soldLast7d: salesMap7d[p.id]?.qty ?? 0 }))
@@ -148,7 +149,7 @@ async function fetchAnalytics(storeId) {
   const topCategories = Object.entries(catMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([cat, qty]) => ({ cat, qty }))
 
   const weekTotal = (dailySummaries || []).reduce((s, d) => s + (d.total_penjualan || 0), 0)
-  const weekTrx   = (dailySummaries || []).reduce((s, d) => s + (d.jumlah_transaksi || 0), 0)
+  const weekTrx = (dailySummaries || []).reduce((s, d) => s + (d.jumlah_transaksi || 0), 0)
   const weekProfit = (dailySummaries || []).reduce((s, d) => s + (d.keuntungan_bersih || 0), 0)
 
   const categories = [...new Set((products || []).map(p => p.category).filter(Boolean))]
@@ -158,6 +159,7 @@ async function fetchAnalytics(storeId) {
     today: { sales: fmt(todaySalesRaw), salesRaw: todaySalesRaw, trxCount: todayTrxCount, avgTrx: fmt(avgTrx), salesChangeStr, salesChangePct },
     week: { total: fmt(weekTotal), trxCount: weekTrx, profit: fmt(weekProfit), days: (dailySummaries || []).map(d => ({ date: d.date, sales: fmt(d.total_penjualan), trx: d.jumlah_transaksi })) },
     potentialProducts, topSelling, lowStock, deadStock, slowMoving, topCategories,
+    criticalThreshold,
     allProducts: (products || []).map(p => ({
       name: p.name, category: p.category ?? 'Umum', stock: p.stock ?? 0,
       hargaJual: fmt(p.harga_jual),
@@ -180,23 +182,7 @@ function renderText(text) {
   })
 }
 
-function InsightCard({ emoji, title, value, sub, accent, loading }) {
-  return (
-    <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col gap-3 transition-all duration-200 cursor-default"
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 8px 28px rgba(0,0,0,0.07),0 0 0 1.5px ${accent}30`; e.currentTarget.style.transform = 'translateY(-2px)' }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = ''; e.currentTarget.style.transform = '' }}>
-      <div className="flex items-center justify-between">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: `${accent}15` }}>{emoji}</div>
-        <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider" style={{ backgroundColor: `${accent}12`, color: accent }}>{loading ? '…' : 'Live'}</span>
-      </div>
-      <div>
-        <p className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-1">{title}</p>
-        {loading ? <div className="h-4 bg-gray-100 rounded animate-pulse w-4/5" /> : <p className="font-bold text-gray-800 text-sm leading-snug">{value}</p>}
-        {sub && !loading && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
-      </div>
-    </div>
-  )
-}
+
 
 function ChatBubble({ msg, primaryColor }) {
   if (msg.role === 'user') {
@@ -210,7 +196,11 @@ function ChatBubble({ msg, primaryColor }) {
   }
   return (
     <div className="flex items-start gap-3 animate-ai-in">
-      <div className="w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-sm font-bold shadow-md mt-0.5" style={{ backgroundColor: primaryColor }}>✦</div>
+      <div className="w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center text-white shadow-md mt-0.5" style={{ backgroundColor: primaryColor }}>
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
+        </svg>
+      </div>
       <div className="max-w-[82%] bg-white border border-gray-100 rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm">
         <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: primaryColor }}>AI Assistant</p>
         {msg.error
@@ -224,7 +214,11 @@ function ChatBubble({ msg, primaryColor }) {
 function TypingIndicator({ primaryColor }) {
   return (
     <div className="flex items-start gap-3 animate-ai-in">
-      <div className="w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-sm font-bold shadow-md" style={{ backgroundColor: primaryColor }}>✦</div>
+      <div className="w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center text-white shadow-md" style={{ backgroundColor: primaryColor }}>
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
+        </svg>
+      </div>
       <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm">
         <div className="flex gap-1.5 items-center">
           {[0, 160, 320].map(d => <span key={d} className="w-2 h-2 rounded-full animate-typing-dot" style={{ backgroundColor: primaryColor, animationDelay: `${d}ms` }} />)}
@@ -239,17 +233,17 @@ export default function AssistantAIPage() {
   const router = useRouter()
   const { primaryColor } = useTheme()
 
-  const [profile, setProfile]           = useState(null)
+  const [profile, setProfile] = useState(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
-  const [storeName, setStoreName]       = useState('')
-  const [analytics, setAnalytics]       = useState(null)
+  const [storeName, setStoreName] = useState('')
+  const [analytics, setAnalytics] = useState(null)
   const [cardsLoading, setCardsLoading] = useState(true)
-  const [messages, setMessages]         = useState([])
-  const [input, setInput]               = useState('')
-  const [isTyping, setIsTyping]         = useState(false)
+  const [messages, setMessages] = useState([])
+  const [input, setInput] = useState('')
+  const [isTyping, setIsTyping] = useState(false)
 
   const chatEndRef = useRef(null)
-  const inputRef   = useRef(null)
+  const inputRef = useRef(null)
 
   // ── Auth + initial fetch (sama persis pola produk page) ─────────────────────
   useEffect(() => {
@@ -283,7 +277,10 @@ export default function AssistantAIPage() {
     const load = async () => {
       setCardsLoading(true)
       try {
-        const data = await fetchAnalytics(profile.store_id)
+        const savedThreshold = typeof window !== 'undefined'
+          ? parseInt(localStorage.getItem('critical_stock_threshold')) || 3
+          : 3
+        const data = await fetchAnalytics(profile.store_id, savedThreshold)
         setAnalytics(data)
       } catch (e) { console.error('Analytics error:', e) }
       finally { setCardsLoading(false) }
@@ -320,12 +317,12 @@ export default function AssistantAIPage() {
       if (!res.ok || data.error) {
         // Show actual Gemini error message if available
         const errMsg = data.error || 'AI tidak merespons.'
-        setMessages(prev => [...prev, { role: 'ai', text: `⚠️ ${errMsg}`, error: true, id: Date.now() + 1 }])
+        setMessages(prev => [...prev, { role: 'ai', text: errMsg, error: true, id: Date.now() + 1 }])
         return
       }
 
       if (!data.reply) {
-        setMessages(prev => [...prev, { role: 'ai', text: '⚠️ AI mengembalikan respons kosong. Coba lagi.', error: true, id: Date.now() + 1 }])
+        setMessages(prev => [...prev, { role: 'ai', text: 'AI mengembalikan respons kosong. Coba lagi.', error: true, id: Date.now() + 1 }])
         return
       }
 
@@ -333,50 +330,26 @@ export default function AssistantAIPage() {
     } catch (err) {
       setIsTyping(false)
       console.error('sendMessage error:', err)
-      setMessages(prev => [...prev, { role: 'ai', text: '⚠️ Koneksi bermasalah. Coba lagi.', error: true, id: Date.now() + 1 }])
+      setMessages(prev => [...prev, { role: 'ai', text: 'Koneksi bermasalah. Coba lagi.', error: true, id: Date.now() + 1 }])
     }
     inputRef.current?.focus()
   }, [input, isTyping, analytics, storeName, messages])
 
   const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }
 
-  // ── Insight cards dari data real ─────────────────────────────────────────────
-  const insightCards = [
-    {
-      emoji: '🔥', title: 'Produk Potensial', accent: primaryColor,
-      value: analytics?.topSelling?.[0]?.name ?? (analytics ? 'Belum ada transaksi' : '—'),
-      sub:   analytics?.topSelling?.[0] ? `${analytics.topSelling[0].qty7d} unit terjual (7 hari)` : null,
-    },
-    {
-      emoji: '⚠️', title: 'Low Stock Alert', accent: '#f59e0b',
-      value: analytics ? (analytics.lowStock.length > 0 ? `${analytics.lowStock.length} produk stok ≤ 3` : 'Stok aman semua') : '—',
-      sub:   analytics?.lowStock?.[0] ? `${analytics.lowStock[0].name} — ${analytics.lowStock[0].stock} unit` : null,
-    },
-    {
-      emoji: '📈', title: 'Penjualan Hari Ini', accent: '#10b981',
-      value: analytics?.today.sales ?? '—',
-      sub:   analytics ? `${analytics.today.salesChangeStr} · ${analytics.today.trxCount} transaksi` : null,
-    },
-    {
-      emoji: '🧠', title: 'Insight AI', accent: '#8b5cf6',
-      value: analytics ? (analytics.deadStock.length > 0 ? `${analytics.deadStock.length} dead stock` : 'Semua produk aktif') : '—',
-      sub:   analytics?.deadStock.length > 0 ? 'Tidak terjual 30+ hari' : (analytics ? 'Tidak ada dead stock' : null),
-    },
-  ]
-
   const suggestions = [
+    'Bagaimana cara menggunakan Website ini?',
     'Bagaimana kondisi toko hari ini?',
-    'Produk apa yang paling potensial?',
-    'Barang mana yang perlu direstock?',
-    'Apa produk dead stock saya?',
-    'Performa penjualan minggu ini?',
-    'Rekomendasikan strategi promo!',
+    'Ide Bisnis apa yang bagus saat ini?',
+    'Produk mana yang perlu direstock?',
+    'Produk dead stock saya?',
+    'Performa penjualan hari ini?'
   ]
 
   if (checkingAuth) {
     return (
       <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500" />
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: primaryColor }} />
       </div>
     )
   }
@@ -390,37 +363,28 @@ export default function AssistantAIPage() {
         .animate-typing-dot { display:inline-block; animation:typingDot 1.2s infinite ease-in-out; }
       `}</style>
 
-      <main className="flex min-h-screen bg-gray-50 text-gray-900 font-sans">
+      <main className="flex min-h-screen bg-white text-slate-900 font-sans">
         <AdminSidebar />
         <div className="flex-1 pt-16 md:pt-0 overflow-x-hidden flex flex-col">
           <div className="flex-1 max-w-5xl w-full mx-auto p-4 md:p-8 flex flex-col gap-6">
 
             {/* HEADER */}
-            <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-lg flex-shrink-0"
-                  style={{ backgroundColor: primaryColor, boxShadow: `0 6px 20px ${primaryColor}45` }}>✦</div>
-                <div>
-                  <h1 className="text-3xl font-semibold tracking-tight leading-none" style={{ color: primaryColor }}>AI Business Assistant</h1>
-                  <p className="text-sm text-gray-500 mt-1">{storeName ? `Analisa real-time untuk ${storeName}` : 'Memuat data toko…'}</p>
-                </div>
+            <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md -mx-4 md:-mx-8 px-4 md:px-8 py-6 mb-2 flex justify-between items-center border-b border-slate-100">
+              <div>
+                <h1 className="text-3xl font-semibold tracking-tight" style={{ color: primaryColor }}>AI Business Assistant</h1>
+                <p className="text-sm text-slate-500 mt-1">{storeName ? `Analisa real-time untuk ${storeName}` : 'Memuat data toko…'}</p>
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-full bg-green-50 text-green-600 border border-green-100">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
-                  Data Real-time
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1.5 text-[10px] font-bold px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                  Real-time
                 </span>
-                <span className="text-[11px] font-bold px-3 py-1.5 rounded-full border"
-                  style={{ backgroundColor: `${primaryColor}10`, borderColor: `${primaryColor}30`, color: primaryColor }}>
-                  ✦ Gemini AI
+                <span className="text-[10px] font-bold px-3 py-1.5 rounded-full border"
+                  style={{ backgroundColor: `${primaryColor}08`, borderColor: `${primaryColor}20`, color: primaryColor }}>
+                  Gemini AI
                 </span>
               </div>
             </header>
-
-            {/* INSIGHT CARDS */}
-            <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {insightCards.map((card, i) => <InsightCard key={i} {...card} loading={cardsLoading} />)}
-            </section>
 
             {/* CHAT SECTION */}
             <section className="flex-1 flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden min-h-[480px]">
@@ -451,10 +415,14 @@ export default function AssistantAIPage() {
               <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4 custom-scrollbar min-h-[280px]">
                 {messages.length === 0 && !isTyping && (
                   <div className="flex flex-col items-center justify-center h-full text-center py-12 gap-4">
-                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ backgroundColor: `${primaryColor}12` }}>🧠</div>
+                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ backgroundColor: `${primaryColor}10` }}>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 9.75a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 0 1 .778-.332 48.294 48.294 0 0 0 5.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
+                      </svg>
+                    </div>
                     <div>
-                      <p className="font-bold text-gray-700 text-base">Tanyakan apa saja tentang bisnis Anda</p>
-                      <p className="text-gray-400 text-sm mt-1">
+                      <p className="font-bold text-slate-700 text-base">Tanyakan apa saja tentang bisnis Anda</p>
+                      <p className="text-slate-400 text-sm mt-1">
                         {cardsLoading ? 'Sedang memuat data toko dari database…' : 'AI membaca langsung data database toko Anda.'}
                       </p>
                     </div>

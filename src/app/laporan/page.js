@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
 import { getUserProfile, getRole } from '../../lib/auth'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import AdminSidebar from '../../components/AdminSidebar'
+import SalesLineChart, { CHART_DAY_OPTIONS } from '../../components/SalesLineChart'
 import { useTheme } from '../../lib/ThemeContext'
+import { getTodayId } from '../../lib/dateId'
 
 // ─── Custom Toast Component ──────────────────────────────────────────────────
 function Toast({ toast, onClose }) {
@@ -63,6 +65,12 @@ function ConfirmDialog({ confirm, onYes, onNo }) {
     iconElement = (
       <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-pink-500 mx-auto" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+      </svg>
+    )
+  } else if (confirm.icon === 'danger') {
+    iconElement = (
+      <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-red-500 mx-auto" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
       </svg>
     )
   }
@@ -434,6 +442,27 @@ export default function Laporan() {
   const [profile, setProfile] = useState(null)
   const [role, setRole] = useState(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
+  const [query, setQuery] = useState({ tab: null, grafik: null, days: null })
+
+  const handleQueryChange = useCallback((next) => {
+    setQuery((prev) => {
+      if (prev.tab === next.tab && prev.grafik === next.grafik && prev.days === next.days) return prev
+      return next
+    })
+  }, [])
+
+  function QuerySync({ onChange }) {
+    const searchParams = useSearchParams()
+    const key = searchParams.toString()
+    useEffect(() => {
+      onChange({
+        tab: searchParams.get('tab'),
+        grafik: searchParams.get('grafik'),
+        days: searchParams.get('days'),
+      })
+    }, [key, onChange])
+    return null
+  }
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -474,6 +503,37 @@ export default function Laporan() {
   const [isClosed, setIsClosed] = useState(false)
   const [closing, setClosing] = useState(false)
   const [history, setHistory] = useState([])
+  const [historyChart, setHistoryChart] = useState([])
+  const [chartDays, setChartDays] = useState(7)
+  const [loadingChart, setLoadingChart] = useState(false)
+  const [activeTab, setActiveTab] = useState('hari-ini')
+  const [showChart, setShowChart] = useState(false)
+  const chartSectionRef = useRef(null)
+
+  useEffect(() => {
+    const tab = query.tab
+    if (tab === 'riwayat') {
+      setActiveTab('riwayat')
+      setShowChart(query.grafik === '1')
+    } else {
+      setActiveTab('hari-ini')
+      setShowChart(false)
+    }
+
+    const daysParam = parseInt(query.days, 10)
+    if (CHART_DAY_OPTIONS.some((o) => o.value === daysParam)) {
+      setChartDays(daysParam)
+    }
+  }, [query.tab, query.grafik, query.days])
+
+  useEffect(() => {
+    if (!checkingAuth && query.tab === 'riwayat' && query.grafik === '1' && chartSectionRef.current) {
+      const t = setTimeout(() => {
+        chartSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 350)
+      return () => clearTimeout(t)
+    }
+  }, [checkingAuth, query.tab, query.grafik])
 
   // ─── Detail Riwayat Harian States ──────────────────────────────────────────
   const [selectedHistoryDate, setSelectedHistoryDate] = useState(null)
@@ -510,7 +570,9 @@ export default function Laporan() {
   const fetchTransactions = useCallback(async () => {
     if (!profile?.store_id) return
     setLoading(true)
-    const todayStr = new Date().toISOString().split('T')[0]
+    const todayStr = getTodayId()
+    const startLocal = new Date(`${todayStr}T00:00:00+07:00`).toISOString()
+    const endLocal = new Date(new Date(`${todayStr}T00:00:00+07:00`).getTime() + 86400000).toISOString()
     const { data, error } = await supabase
       .from('transactions')
       .select(`
@@ -521,7 +583,8 @@ export default function Laporan() {
         )
       `)
       .eq('store_id', profile.store_id)
-      .gte('created_at', todayStr)
+      .gte('created_at', startLocal)
+      .lt('created_at', endLocal)
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -545,9 +608,33 @@ export default function Laporan() {
       .from('daily_summary')
       .select('*')
       .eq('store_id', profile.store_id)
+      .eq('status', 'closed')
+      .gt('jumlah_transaksi', 0)
       .order('date', { ascending: false })
     if (data) setHistory(data)
   }, [profile?.store_id])
+
+  const fetchChartHistory = useCallback(async () => {
+    if (!profile?.store_id) return
+    setLoadingChart(true)
+    const { data } = await supabase
+      .from('daily_summary')
+      .select('date, total_penjualan, keuntungan_bersih')
+      .eq('store_id', profile.store_id)
+      .eq('status', 'closed')
+      .gt('jumlah_transaksi', 0)
+      .order('date', { ascending: false })
+      .limit(chartDays)
+    if (data) setHistoryChart(data.reverse())
+    setLoadingChart(false)
+  }, [profile?.store_id, chartDays])
+
+  const handleChartDaysChange = (days) => {
+    setChartDays(days)
+    setShowChart(true)
+    setActiveTab('riwayat')
+    router.replace(`/laporan?tab=riwayat&grafik=1&days=${days}`, { scroll: false })
+  }
 
   const fetchDetailTransactions = useCallback(async (dateStr) => {
     if (!profile?.store_id) return
@@ -584,7 +671,9 @@ export default function Laporan() {
 
   const checkStatus = useCallback(async () => {
     if (!profile?.store_id) return
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayId()
+    const startLocal = new Date(`${today}T00:00:00+07:00`).toISOString()
+    const endLocal = new Date(new Date(`${today}T00:00:00+07:00`).getTime() + 86400000).toISOString()
     const { data } = await supabase
       .from('daily_summary')
       .select('status')
@@ -599,6 +688,12 @@ export default function Laporan() {
     checkStatus()
     fetchHistory()
   }, [fetchTransactions, checkStatus, fetchHistory])
+
+  useEffect(() => {
+    if (profile?.store_id && activeTab === 'riwayat' && showChart) {
+      fetchChartHistory()
+    }
+  }, [profile?.store_id, chartDays, showChart, activeTab, fetchChartHistory])
 
   // ─── Batal Transaksi ──────────────────────────────────────────────────────
   const handleVoidTransaction = async (trx) => {
@@ -693,7 +788,7 @@ export default function Laporan() {
     if (!confirmed) return
 
     setClosing(true)
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayId()
 
     try {
       const { data: existing } = await supabase
@@ -794,7 +889,7 @@ export default function Laporan() {
       danger: true,
     })
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayId()
 
     try {
       if (resetData) {
@@ -829,7 +924,8 @@ export default function Laporan() {
           .from('transactions')
           .delete()
           .eq('store_id', profile.store_id)
-          .gte('created_at', today)
+          .gte('created_at', startLocal)
+          .lt('created_at', endLocal)
         if (trxErr) throw trxErr
 
         showToast('Hari dibuka. Transaksi direset. Penjualan baru akan diakumulasi.', 'success')
@@ -878,7 +974,7 @@ export default function Laporan() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `laporan-penjualan-${new Date().toISOString().split('T')[0]}.csv`
+    link.download = `laporan-penjualan-${getTodayId()}.csv`
     link.click()
     URL.revokeObjectURL(url)
   }
@@ -986,10 +1082,39 @@ export default function Laporan() {
     }
   }
 
+  // ─── Hapus Riwayat Harian ────────────────────────────────────────────────
+  const handleDeleteHistory = async (item, e) => {
+    e.stopPropagation()
+    const confirmed = await showConfirm({
+      icon: 'danger',
+      title: 'Hapus Riwayat Ini?',
+      message: `Data rekap tanggal ${new Date(item.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })} akan dihapus permanen.\nTindakan ini tidak bisa dibatalkan.`,
+      labelYes: 'Ya, Hapus',
+      labelNo: 'Batal',
+      danger: true,
+    })
+    if (!confirmed) return
+    try {
+      const { error } = await supabase
+        .from('daily_summary')
+        .delete()
+        .eq('id', item.id)
+        .eq('store_id', profile.store_id)
+      if (error) throw error
+      showToast('Riwayat berhasil dihapus.', 'success')
+      fetchHistory()
+    } catch (err) {
+      showToast('Gagal menghapus riwayat.', 'error')
+    }
+  }
+
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <>
       <Toast toast={toast} onClose={() => setToast(null)} />
+      <Suspense fallback={null}>
+        <QuerySync onChange={handleQueryChange} />
+      </Suspense>
       {checkingAuth && (
         <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: primaryColor }}></div>
@@ -1010,233 +1135,314 @@ export default function Laporan() {
               </div>
             </header>
 
-            {/* SUMMARY CARD */}
-            <section 
-              className="bg-white border-2 shadow-md shadow-slate-100/50 rounded-[2rem] p-8 mb-8 flex flex-col md:flex-row justify-between items-center gap-6"
-              style={{ borderColor: `${primaryColor}30` }}
-            >
-              <div className="text-center md:text-left">
-                <div className="flex items-center gap-2 mb-2 justify-center md:justify-start">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    {isClosed ? 'Rekap Penjualan (HARI DITUTUP)' : 'Total Penjualan Hari Ini'}
-                  </p>
-                  {isClosed && <span className="bg-emerald-500 text-white text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest">Locked</span>}
-                </div>
-                <h2 className="text-4xl md:text-5xl font-black tracking-tight" style={{ color: primaryColor }}>
-                  {formatIDR(totalHariIni)}
-                </h2>
-                <div className="flex gap-4 mt-4 justify-center md:justify-start">
-                  <div className="flex flex-col">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Tunai</span>
-                    <span className="text-base font-bold text-emerald-600">{formatIDR(totalCash)}</span>
-                  </div>
-                  <div className="w-[1px] h-8 bg-slate-200/80 self-center"></div>
-                  <div className="flex flex-col">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">QRIS / Non-Tunai</span>
-                    <span className="text-base font-bold text-red-600">{formatIDR(totalQRIS)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-4 items-center">
-                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-center min-w-[120px]">
-                  <p className="text-[10px] text-slate-400 mb-1 uppercase font-bold tracking-wider">Transaksi</p>
-                  <p className="text-2xl font-black text-slate-800">{transactions.length}</p>
-                </div>
-
-                {!isClosed ? (
-                  <button
-                    onClick={handleCloseDay}
-                    disabled={closing || transactions.length === 0}
-                    className="text-white px-6 py-3.5 rounded-xl font-bold shadow-lg transition-all active:scale-95 disabled:opacity-50 text-xs uppercase tracking-wider"
-                    style={{ 
-                      backgroundColor: primaryColor, 
-                      boxShadow: `0 4px 12px ${primaryColor}30` 
-                    }}
-                  >
-                    {closing ? '...' : 'Tutup Hari'}
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleOpenDay}
-                    className="bg-emerald-600 text-white px-6 py-3.5 rounded-xl font-bold shadow-lg hover:bg-emerald-700 transition-all active:scale-95 flex flex-col items-center leading-tight text-xs uppercase tracking-wider"
-                  >
-                    Buka Hari
-                  </button>
-                )}
+            {/* ACTION BANNER */}
+            <section className="bg-slate-50 border border-slate-100 rounded-[2rem] p-6 mb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-sm">Status Hari Operasional</h3>
+                <p className="text-slate-400 text-xs mt-0.5">
+                  {isClosed 
+                    ? 'Hari ini telah ditutup. Kasir tidak bisa melakukan transaksi baru.' 
+                    : 'Hari operasional aktif. Jangan lupa untuk menutup hari saat selesai.'}
+                </p>
               </div>
             </section>
 
-            {/* TRANSACTION LIST */}
-            <section className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden mb-8">
-              <div className="p-6 border-b border-slate-100 bg-white flex justify-between items-center">
-                <h3 className="font-bold text-slate-800 text-sm">Detail Transaksi Hari Ini</h3>
-                {transactions.length > 0 && (
+            {/* Grafik Rekap Penjualan */}
+            {activeTab === 'riwayat' && showChart && (
+              <section
+                ref={chartSectionRef}
+                className="bg-white border border-slate-100 shadow-sm rounded-[2rem] p-6 mb-8 scroll-mt-24"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${primaryColor}10` }}>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4" style={{ color: primaryColor }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">Rekap Penjualan</p>
+                      <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                        {chartDays} hari terakhir
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-5 h-[2px] rounded" style={{ backgroundColor: primaryColor }} />
+                        <span className="text-[9px] text-slate-400 font-semibold">Penjualan</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-5 h-[2px] rounded border-t-2 border-dashed" style={{ borderColor: primaryColor, opacity: 0.45 }} />
+                        <span className="text-[9px] text-slate-400 font-semibold">Keuntungan</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1 p-1 bg-slate-50 rounded-xl border border-slate-100">
+                      {CHART_DAY_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => handleChartDaysChange(opt.value)}
+                          className="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all"
+                          style={
+                            chartDays === opt.value
+                              ? { backgroundColor: primaryColor, color: '#fff', boxShadow: `0 2px 8px ${primaryColor}35` }
+                              : { color: '#94a3b8' }
+                          }
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {loadingChart ? (
+                  <div className="py-12 flex justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: primaryColor }} />
+                  </div>
+                ) : historyChart.length < 2 ? (
+                  <div className="py-10 text-center text-slate-400 text-xs font-semibold">
+                    Belum cukup data rekap untuk menampilkan grafik (minimal 2 hari).
+                  </div>
+                ) : (
+                  <SalesLineChart
+                    data={historyChart}
+                    primaryColor={primaryColor}
+                    formatIDR={formatIDR}
+                    height={chartDays > 14 ? 130 : 110}
+                  />
+                )}
+              </section>
+            )}
+
+            {/* TABEL DENGAN TAB */}
+            <section className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
+              {/* Tab Header */}
+              <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex gap-0 border-b-0">
+                  {[{ id: 'hari-ini', label: 'Transaksi Hari Ini' }, { id: 'riwayat', label: 'Riwayat Rekap' }].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setActiveTab(tab.id)
+                        if (tab.id === 'riwayat') {
+                          setShowChart(true)
+                          router.replace(`/laporan?tab=riwayat&grafik=1&days=${chartDays}`, { scroll: false })
+                        } else {
+                          setShowChart(false)
+                          router.replace('/laporan', { scroll: false })
+                        }
+                      }}
+                      className="relative px-5 py-2 text-xs font-bold transition-all"
+                      style={activeTab === tab.id
+                        ? { color: primaryColor }
+                        : { color: '#94a3b8' }
+                      }
+                    >
+                      {tab.label}
+                      {activeTab === tab.id && (
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ backgroundColor: primaryColor }} />
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Action button per tab */}
+                {activeTab === 'hari-ini' && transactions.length > 0 && (
                   <button
-                    onClick={() => exportDailyDetailCSV(new Date().toISOString().split('T')[0])}
+                    onClick={() => exportDailyDetailCSV(getTodayId())}
                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all active:scale-95 shadow-md shadow-emerald-600/10 flex items-center gap-1.5"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                     </svg>
-                    <span>Export Detail</span>
+                    Export Detail
+                  </button>
+                )}
+                {activeTab === 'riwayat' && (
+                  <button
+                    onClick={exportCSV}
+                    disabled={history.length === 0}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all active:scale-95 shadow-md shadow-emerald-600/10 disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                    Export Riwayat
                   </button>
                 )}
               </div>
-              <div className="overflow-x-auto">
-                {loading ? (
-                  <div className="p-12 text-center text-slate-400">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4" style={{ borderColor: primaryColor }}></div>
-                    <span className="text-xs font-medium">Memuat data...</span>
-                  </div>
-                ) : transactions.length === 0 ? (
-                  <div className="p-12 text-center text-slate-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 mx-auto text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
-                    </svg>
-                    <p className="font-semibold text-xs text-slate-400">Belum ada transaksi hari ini.</p>
-                  </div>
-                ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                        <th className="px-6 py-4">Waktu</th>
-                        <th className="px-6 py-4">Produk yang Dibeli</th>
-                        <th className="px-6 py-4 text-center">Metode</th>
-                        <th className="px-6 py-4 text-right">Total</th>
-                        <th className="px-6 py-4 text-center">Aksi</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100/50">
-                      {transactions.map((trx) => (
-                        <tr key={trx.id} className="hover:bg-slate-50/50 transition-colors align-top">
-                          <td className="px-6 py-4 text-xs text-slate-500 whitespace-nowrap">
-                            <p className="font-semibold text-slate-700">{formatTime(trx.created_at)}</p>
-                            <p className="text-[9px] font-mono text-slate-400 mt-0.5">#{trx.id.slice(0, 8)}</p>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex flex-col gap-1.5">
-                              {trx.transaction_items?.map((item, i) => (
-                                <span key={i} className="text-xs text-slate-600">
-                                  <span className="font-bold text-slate-700">{item.products?.name ?? '—'}</span>
-                                  <span className="text-slate-400 font-semibold"> × {item.quantity}</span>
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded ml-2 font-medium"
-                                        style={{ color: primaryColor, backgroundColor: `${primaryColor}10` }}>
-                                    ({formatIDR(item.subtotal)})
-                                  </span>
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider
-                            ${trx.payment_method === 'Tunai' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                              {trx.payment_method || 'Tunai'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right whitespace-nowrap">
-                            <p className="font-bold text-slate-800 text-xs">{formatIDR(trx.total_harga)}</p>
-                            {trx.diskon > 0 && (
-                              <p className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-100/30 inline-block mt-1">
-                                Diskon -{formatIDR(trx.diskon)}
-                              </p>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <button
-                              onClick={() => handleVoidTransaction(trx)}
-                              disabled={isClosed}
-                              className="px-4 py-1.5 bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-30 disabled:hover:bg-rose-500 text-[9px] font-bold rounded-xl transition-colors uppercase tracking-widest shadow-sm"
-                            >
-                              REFUND
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </section>
 
-            {/* DAILY SUMMARY HISTORY */}
-            <section className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
-                <div>
-                  <h3 className="font-bold text-slate-800 text-sm">Riwayat Rekap Harian</h3>
-                  <span className="text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest mt-1 inline-block border"
-                        style={{ color: primaryColor, borderColor: `${primaryColor}20`, backgroundColor: `${primaryColor}08` }}>
-                    Data Permanen
-                  </span>
-                </div>
-                <button
-                  onClick={exportCSV}
-                  disabled={history.length === 0}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all active:scale-95 shadow-md shadow-emerald-600/10 disabled:opacity-50"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 inline mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                  </svg>
-                  <span>Export Riwayat</span>
-                </button>
-              </div>
+              {/* Tab Content */}
               <div className="overflow-x-auto">
-                {history.length === 0 ? (
-                  <div className="p-12 text-center text-slate-400">
-                    <span className="text-xs font-semibold">Belum ada riwayat penutupan hari.</span>
-                  </div>
-                ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                        <th className="px-6 py-4">Tanggal</th>
-                        <th className="px-6 py-4 text-right">Penjualan</th>
-                        <th className="px-6 py-4 text-right">Modal</th>
-                        <th className="px-6 py-4 text-right">Untung Bersih</th>
-                        <th className="px-6 py-4 text-center">Aksi</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100/50">
-                      {history.map((item) => (
-                        <tr
-                          key={item.id}
-                          onClick={() => fetchDetailTransactions(item.date)}
-                          className="hover:bg-slate-50/50 transition-colors cursor-pointer select-none group"
-                          title="Klik untuk melihat detail transaksi hari ini"
-                        >
-                          <td className="px-6 py-4">
-                            <p className="font-semibold text-slate-700 flex items-center gap-1.5 text-xs">
-                              {new Date(item.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}
-                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                              </svg>
-                            </p>
-                            <p className="text-[9px] text-slate-400 font-mono">#{item.jumlah_transaksi} Trx</p>
-                          </td>
-                          <td className="px-6 py-4 text-right text-slate-600 font-bold text-xs">{formatIDR(item.total_penjualan)}</td>
-                          <td className="px-6 py-4 text-right text-slate-400 text-xs">{formatIDR(item.total_modal)}</td>
-                          <td className="px-6 py-4 text-right font-black text-xs" style={{ color: primaryColor }}>{formatIDR(item.keuntungan_bersih)}</td>
-                          <td className="px-6 py-4 text-center whitespace-nowrap">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                exportDailyDetailCSV(item.date)
-                              }}
-                              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[9px] font-extrabold transition-all active:scale-95 flex items-center gap-1 mx-auto shadow-sm"
-                              title="Export detail transaksi hari ini"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                              </svg>
-                              <span>Export Detail</span>
-                            </button>
-                          </td>
+
+                {/* ── Tab: Transaksi Hari Ini ── */}
+                {activeTab === 'hari-ini' && (
+                  loading ? (
+                    <div className="p-12 text-center text-slate-400">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4" style={{ borderColor: primaryColor }}></div>
+                      <span className="text-xs font-medium">Memuat data...</span>
+                    </div>
+                  ) : transactions.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 mx-auto text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                      </svg>
+                      <p className="font-semibold text-xs text-slate-400">Belum ada transaksi hari ini.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="px-6 pt-6 pb-4 border-b border-slate-100">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div
+                            className="rounded-2xl border border-slate-100 px-4 py-3"
+                            style={isClosed ? { backgroundColor: 'rgba(148, 163, 184, 0.12)' } : { backgroundColor: 'rgba(248, 250, 252, 0.4)' }}
+                          >
+                            <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Total Hari Ini</p>
+                            <p className={`mt-1 text-sm font-black ${isClosed ? 'text-slate-500' : 'text-slate-800'}`}>{formatIDR(totalHariIni)}</p>
+                            <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{transactions.length} trx</p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-100 bg-slate-50/40 px-4 py-3">
+                            <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Tunai</p>
+                            <p className="mt-1 text-sm font-black text-emerald-700">{formatIDR(totalCash)}</p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-100 bg-slate-50/40 px-4 py-3">
+                            <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">QRIS</p>
+                            <p className="mt-1 text-sm font-black text-rose-600">{formatIDR(totalQRIS)}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                          <th className="px-6 py-4">Waktu</th>
+                          <th className="px-6 py-4">Produk yang Dibeli</th>
+                          <th className="px-6 py-4 text-center">Metode</th>
+                          <th className="px-6 py-4 text-right">Total</th>
+                          <th className="px-6 py-4 text-center">Aksi</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100/50">
+                        {transactions.map((trx) => (
+                          <tr key={trx.id} className="hover:bg-slate-50/50 transition-colors align-top">
+                            <td className="px-6 py-4 text-xs text-slate-500 whitespace-nowrap">
+                              <p className="font-semibold text-slate-700">{formatTime(trx.created_at)}</p>
+                              <p className="text-[9px] font-mono text-slate-400 mt-0.5">#{trx.id.slice(0, 8)}</p>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-col gap-1.5">
+                                {trx.transaction_items?.map((item, i) => (
+                                  <span key={i} className="text-xs text-slate-600">
+                                    <span className="font-bold text-slate-700">{item.products?.name ?? '—'}</span>
+                                    <span className="text-slate-400 font-semibold"> × {item.quantity}</span>
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded ml-2 font-medium"
+                                          style={{ color: primaryColor, backgroundColor: `${primaryColor}10` }}>
+                                      ({formatIDR(item.subtotal)})
+                                    </span>
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <span className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider
+                              ${trx.payment_method === 'Tunai' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                                {trx.payment_method || 'Tunai'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-right whitespace-nowrap">
+                              <p className="font-bold text-slate-800 text-xs">{formatIDR(trx.total_harga)}</p>
+                              {trx.diskon > 0 && (
+                                <p className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-100/30 inline-block mt-1">
+                                  Diskon -{formatIDR(trx.diskon)}
+                                </p>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <button
+                                onClick={() => handleVoidTransaction(trx)}
+                                disabled={isClosed}
+                                className="px-4 py-1.5 bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-30 disabled:hover:bg-rose-500 text-[9px] font-bold rounded-xl transition-colors uppercase tracking-widest shadow-sm"
+                              >
+                                REFUND
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    </>
+                  )
                 )}
+
+                {/* ── Tab: Riwayat Rekap Harian ── */}
+                {activeTab === 'riwayat' && (
+                  history.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400">
+                      <span className="text-xs font-semibold">Belum ada riwayat penutupan hari.</span>
+                    </div>
+                  ) : (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                          <th className="px-6 py-4">Tanggal</th>
+                          <th className="px-6 py-4 text-right">Penjualan</th>
+                          <th className="px-6 py-4 text-right">Modal</th>
+                          <th className="px-6 py-4 text-right">Untung Bersih</th>
+                          <th className="px-6 py-4 text-center">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100/50">
+                        {history.map((item) => (
+                          <tr
+                            key={item.id}
+                            onClick={() => fetchDetailTransactions(item.date)}
+                            className="hover:bg-slate-50/50 transition-colors cursor-pointer select-none group"
+                          >
+                            <td className="px-6 py-4">
+                              <p className="font-semibold text-slate-700 flex items-center gap-1.5 text-xs">
+                                {new Date(item.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}
+                                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                </svg>
+                              </p>
+                              <p className="text-[9px] text-slate-400 font-mono">#{item.jumlah_transaksi} Trx</p>
+                            </td>
+                            <td className="px-6 py-4 text-right text-slate-600 font-bold text-xs">{formatIDR(item.total_penjualan)}</td>
+                            <td className="px-6 py-4 text-right text-slate-400 text-xs">{formatIDR(item.total_modal)}</td>
+                            <td className="px-6 py-4 text-right font-black text-xs" style={{ color: primaryColor }}>{formatIDR(item.keuntungan_bersih)}</td>
+                            <td className="px-6 py-4 text-center whitespace-nowrap">
+                              <div className="flex items-center gap-1.5 justify-center">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); exportDailyDetailCSV(item.date) }}
+                                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[9px] font-extrabold transition-all active:scale-95 flex items-center gap-1 shadow-sm"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                                  </svg>
+                                  Export
+                                </button>
+                                <button
+                                  onClick={(e) => handleDeleteHistory(item, e)}
+                                  className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl text-[9px] font-extrabold transition-all active:scale-95 flex items-center gap-1 shadow-sm"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                  </svg>
+                                  Hapus
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )
+                )}
+
               </div>
             </section>
           </div>

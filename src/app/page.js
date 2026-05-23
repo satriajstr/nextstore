@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { getUserProfile, signOut } from '../lib/auth'
 import { useRouter } from 'next/navigation'
 import { useTheme } from '../lib/ThemeContext'
+import { getStoreHoursStatus } from '../lib/storeHours'
+import { getTodayId } from '../lib/dateId'
 
 // ─── Toast Component ──────────────────────────────────────────────────────────
 function Toast({ toast, onClose }) {
@@ -69,7 +71,7 @@ export default function Home() {
       }
 
       if (userProfile.status !== 'approved') {
-        setRole('pending_kasir')
+        setRole(userProfile.status === 'disabled' ? 'disabled_kasir' : 'pending_kasir')
         setCheckingAuth(false)
         return
       }
@@ -90,6 +92,8 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState('Semua')
   const [showFullCart, setShowFullCart] = useState(false)
   const [tappedProductId, setTappedProductId] = useState(null)
+  const [cartFx, setCartFx] = useState(null) // { id, type: 'add' | 'remove' }
+  const [exitingCartIds, setExitingCartIds] = useState([])
 
   // Customization States
   const [gridCols, setGridCols] = useState(3)
@@ -145,6 +149,8 @@ export default function Home() {
   const [selectedQuickCash, setSelectedQuickCash] = useState(null)
   const [paymentMethod, setPaymentMethod] = useState('Tunai')
   const [isClosed, setIsClosed] = useState(false)
+  const [outsideHours, setOutsideHours] = useState(false)
+  const [operatingHours, setOperatingHours] = useState({ open: '', close: '' })
 
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type })
@@ -170,23 +176,41 @@ export default function Home() {
     setLoading(false)
   }, [profile?.store_id])
 
-  // 1.1 Check Store Closed Status
+  // 1.1 Check Store Closed Status & Jam Operasional
   const checkStatus = useCallback(async () => {
     if (!profile?.store_id) return
-    const today = new Date().toISOString().split('T')[0]
-    const { data } = await supabase
-      .from('daily_summary')
-      .select('status')
-      .eq('store_id', profile.store_id)
-      .eq('date', today)
-      .maybeSingle()
-    setIsClosed(data?.status === 'closed')
+    const today = getTodayId()
+    const [{ data: summary }, { data: store }] = await Promise.all([
+      supabase
+        .from('daily_summary')
+        .select('status')
+        .eq('store_id', profile.store_id)
+        .eq('date', today)
+        .maybeSingle(),
+      supabase
+        .from('stores')
+        .select('open_time, close_time')
+        .eq('id', profile.store_id)
+        .single(),
+    ])
+    setIsClosed(summary?.status === 'closed')
+
+    const hoursStatus = getStoreHoursStatus(store?.open_time, store?.close_time)
+    setOutsideHours(hoursStatus.hasHours && !hoursStatus.isOpen)
+    setOperatingHours({ open: hoursStatus.openTime, close: hoursStatus.closeTime })
   }, [profile?.store_id])
 
   useEffect(() => {
     getData()
     checkStatus()
+    const interval = setInterval(checkStatus, 60_000)
+    return () => clearInterval(interval)
   }, [getData, checkStatus])
+
+  const triggerCartFx = (id, type) => {
+    setCartFx({ id, type })
+    setTimeout(() => setCartFx(null), 600)
+  }
 
   // 2. Add to Cart Logic
   const addToCart = (product) => {
@@ -213,18 +237,38 @@ export default function Home() {
     })
   }
 
+  const CART_ROW_TRANSITION_MS = 550
+
+  const removeCartItemCompletely = (productId) => {
+    triggerCartFx(productId, 'remove')
+    setExitingCartIds((prev) => [...prev, productId])
+    setTimeout(() => {
+      setCart((prev) => prev.filter((item) => item.id !== productId))
+      setExitingCartIds((prev) => prev.filter((id) => id !== productId))
+    }, CART_ROW_TRANSITION_MS)
+  }
+
   // 3. Remove/Decrease from Cart
   const removeFromCart = (productId) => {
-    setCart((prevCart) => {
-      const existingItem = prevCart.find((item) => item.id === productId)
-      if (!existingItem) return prevCart
-      if (existingItem.quantity === 1) {
-        return prevCart.filter((item) => item.id !== productId)
-      }
-      return prevCart.map((item) =>
+    const existingItem = cart.find((item) => item.id === productId)
+    if (!existingItem) return
+
+    triggerCartFx(productId, 'remove')
+
+    if (existingItem.quantity === 1) {
+      setExitingCartIds((prev) => [...prev, productId])
+      setTimeout(() => {
+        setCart((prev) => prev.filter((item) => item.id !== productId))
+        setExitingCartIds((prev) => prev.filter((id) => id !== productId))
+      }, CART_ROW_TRANSITION_MS)
+      return
+    }
+
+    setCart((prevCart) =>
+      prevCart.map((item) =>
         item.id === productId ? { ...item, quantity: item.quantity - 1 } : item
       )
-    })
+    )
   }
 
   // 4. Calculations & Formatter
@@ -251,6 +295,10 @@ export default function Home() {
     if (cart.length === 0) return
     if (isClosed) {
       showToast('Toko sudah tutup hari ini! Transaksi baru tidak diperbolehkan.', 'error')
+      return
+    }
+    if (outsideHours) {
+      showToast('Di luar jam operasional toko. Transaksi tidak diperbolehkan.', 'error')
       return
     }
     if (paymentMethod === 'Tunai' && (parseInt(amountReceived) || 0) < totalTagihan) {
@@ -509,6 +557,25 @@ export default function Home() {
         </div>
       )}
 
+      {role === 'disabled_kasir' && (
+        <div className="fixed inset-0 z-[150] bg-gray-50 flex items-center justify-center p-6">
+          <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-xl p-10 text-center animate-fade-in border border-gray-100">
+            <div className="w-20 h-20 bg-rose-100 text-rose-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-black text-gray-800 mb-3 tracking-tight">Akun Dinonaktifkan</h2>
+            <p className="text-gray-500 text-sm leading-relaxed mb-8">
+              Akun kasir Anda telah <strong>dinonaktifkan</strong> oleh Admin toko. Anda tidak dapat mengakses sistem hingga Admin mengaktifkan kembali akun Anda.
+            </p>
+            <button onClick={signOut} className="w-full py-4 bg-rose-50 text-rose-600 rounded-2xl font-bold hover:bg-rose-100 transition-all active:scale-95 text-sm uppercase tracking-widest">
+              Keluar / Logout
+            </button>
+          </div>
+        </div>
+      )}
+
       {isClosed && (
         <div className="fixed inset-0 z-[150] bg-gray-50 flex items-center justify-center p-6">
           <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-xl p-10 text-center animate-fade-in border border-gray-100">
@@ -522,6 +589,28 @@ export default function Home() {
               Toko <strong>{storeName}</strong> telah menutup operasional hari ini. Anda tidak dapat membuka kasir atau memproses transaksi baru hingga hari kerja dibuka kembali oleh Admin.
             </p>
             <button onClick={signOut} className="w-full py-4 bg-rose-50 text-rose-600 rounded-2xl font-bold hover:bg-rose-100 transition-all active:scale-95 text-sm uppercase tracking-widest">
+              Keluar / Logout
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!isClosed && outsideHours && (
+        <div className="fixed inset-0 z-[150] bg-gray-50 flex items-center justify-center p-6">
+          <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-xl p-10 text-center animate-fade-in border border-gray-100">
+            <div className="w-20 h-20 bg-amber-100 text-amber-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-black text-gray-800 mb-3 tracking-tight">Di Luar Jam Operasional</h2>
+            <p className="text-gray-500 text-sm leading-relaxed mb-4">
+              Toko <strong>{storeName}</strong> hanya membuka akses kasir pada jam operasional yang ditetapkan Admin.
+            </p>
+            <p className="text-sm font-bold text-amber-700 bg-amber-50 rounded-2xl py-3 px-4 mb-8">
+              Jam operasional: {operatingHours.open} – {operatingHours.close} WIB
+            </p>
+            <button onClick={signOut} className="w-full py-4 bg-amber-50 text-amber-700 rounded-2xl font-bold hover:bg-amber-100 transition-all active:scale-95 text-sm uppercase tracking-widest">
               Keluar / Logout
             </button>
           </div>
@@ -759,7 +848,7 @@ export default function Home() {
 
 
                         {/* Change Password in Settings */}
-                        <div className="pt-4 border-t border-gray-100 mt-1">
+                        <div className="pt-4 border-t border-gray-100 mt-1 space-y-2">
                           <button
                             onClick={() => { setShowChangePassword(true); setShowSettings(false) }}
                             className="w-full py-2.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-600 hover:bg-amber-100 transition-all flex items-center justify-center gap-1.5"
@@ -769,20 +858,19 @@ export default function Home() {
                             </svg>
                             <span>Ganti Password</span>
                           </button>
+                          <button
+                            onClick={() => { setShowSettings(false); handleLogout() }}
+                            className="w-full py-2.5 rounded-xl text-xs font-bold bg-red-50 text-red-500 hover:bg-red-100 transition-all flex items-center justify-center gap-1.5"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+                            </svg>
+                            <span>Logout</span>
+                          </button>
                         </div>
                       </div>
                     )}
                   </div>
-
-                  <button
-                    onClick={handleLogout}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-500 rounded-xl font-bold text-xs hover:bg-red-100 transition-all shadow-sm border border-red-100/50 uppercase tracking-widest group"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
-                    </svg>
-                    <span className="hidden sm:inline">Logout</span>
-                  </button>
                 </div>
               </div>
 
@@ -930,13 +1018,24 @@ export default function Home() {
                 </div>
               ) : (
                 cart.map((item) => (
-                  <div key={item.id} className="flex justify-between items-center group animate-slide-in gap-2 border-b border-gray-100/50 pb-4 last:border-b-0 last:pb-0">
+                  <div
+                    key={item.id}
+                    className={`relative flex justify-between items-center group gap-2 border-b border-gray-100/50 pb-4 last:border-b-0 last:pb-0 overflow-hidden transition-all duration-[550ms] ease-[cubic-bezier(0.16,1,0.3,1)]
+                      ${exitingCartIds.includes(item.id)
+                        ? 'opacity-0 translate-y-8 scale-[0.96] max-h-0 !pb-0 !mb-0 pointer-events-none'
+                        : 'opacity-100 translate-y-0 scale-100 max-h-24 animate-slide-in'}`}
+                  >
+                    {cartFx?.id === item.id && (
+                      <div className="absolute inset-0 z-20 flex items-center justify-center bg-pink-500/10 rounded-2xl animate-cart-ping">
+                        <span className="text-pink-500 font-bold text-lg animate-cart-float">
+                          {cartFx.type === 'remove' ? '-1' : '+1'}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2.5 flex-1 min-w-0">
                       <button
                         disabled={processing}
-                        onClick={() => {
-                          setCart(prev => prev.filter(cartItem => cartItem.id !== item.id))
-                        }}
+                        onClick={() => removeCartItemCompletely(item.id)}
                         className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all rounded-lg flex-shrink-0"
                         title="Hapus item dari keranjang"
                       >
@@ -963,7 +1062,10 @@ export default function Home() {
                       <span className="font-semibold w-4 text-center text-gray-800 text-sm">{item.quantity}</span>
                       <button
                         disabled={processing}
-                        onClick={() => addToCart(item)}
+                        onClick={() => {
+                          triggerCartFx(item.id, 'add')
+                          addToCart(item)
+                        }}
                         className="w-8 h-8 flex items-center justify-center bg-pink-500 rounded-lg text-white shadow-md shadow-pink-100 hover:bg-pink-600 transition-all active:scale-90"
                       >
                         +
