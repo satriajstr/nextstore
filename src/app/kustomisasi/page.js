@@ -138,7 +138,7 @@ export default function Kustomisasi() {
           {/* Header */}
           <header className="mb-10">
             <h1 className="text-3xl font-semibold tracking-tight" style={{ color: activeColor }}>
-              Kustomisasi Toko
+              Pengaturan Toko
             </h1>
             <p className="text-gray-400 text-sm mt-1">Sesuaikan tampilan, identitas, dan jam operasional toko Anda</p>
           </header>

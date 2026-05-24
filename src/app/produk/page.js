@@ -316,10 +316,19 @@ export default function Produk() {
   })
   const [filterCriticalOnly, setFilterCriticalOnly] = useState(false)
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 15
+
   // Sync threshold to localStorage
   useEffect(() => {
     localStorage.setItem('critical_stock_threshold', criticalThreshold)
   }, [criticalThreshold])
+
+  // Reset pagination to page 1 when search or filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, filterCategory, sortByStock, filterCriticalOnly])
 
   const [modal, setModal] = useState(null) // { mode: 'add'|'edit', product?: {} }
   const [saving, setSaving] = useState(false)
@@ -465,6 +474,47 @@ export default function Produk() {
     })
 
   const displayedProducts = filtered.filter(p => !filterCriticalOnly || (p.stock ?? 0) <= criticalThreshold)
+
+  // Pagination Logic
+  const totalPages = Math.ceil(displayedProducts.length / itemsPerPage)
+  const activePage = Math.max(1, Math.min(currentPage, totalPages || 1))
+  const startIndex = (activePage - 1) * itemsPerPage
+  const paginatedProducts = displayedProducts.slice(startIndex, startIndex + itemsPerPage)
+
+  // Keep state in sync if page goes out of bounds (e.g. after deletion)
+  useEffect(() => {
+    if (currentPage > 1 && currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages)
+    }
+  }, [displayedProducts.length, totalPages, currentPage])
+
+  // Helper for rendering pagination page numbers with smart ellipsis (...)
+  const getPageNumbers = () => {
+    const delta = 1 // Number of pages to show before and after current page
+    const range = []
+    const rangeWithDots = []
+    let l
+
+    for (let i = 1; i <= totalPages; i++) {
+      if (i === 1 || i === totalPages || (i >= activePage - delta && i <= activePage + delta)) {
+        range.push(i)
+      }
+    }
+
+    for (let i of range) {
+      if (l) {
+        if (i - l === 2) {
+          rangeWithDots.push(l + 1)
+        } else if (i - l > 2) {
+          rangeWithDots.push('...')
+        }
+      }
+      rangeWithDots.push(i)
+      l = i
+    }
+
+    return rangeWithDots
+  }
 
   // ─── EXPORT CSV ─────────────────────────────────────────────────────────────
   const exportProductsCSV = () => {
@@ -630,9 +680,9 @@ export default function Produk() {
                     </div>
                     {stat.type === 'critical' ? (
                       <div>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Stok Kritis</p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Stok Kritis(&lt;=)</p>
                         <div className="flex items-center justify-between mt-1">
-                          <p className="text-xl font-bold text-slate-800 tracking-tight">{stat.value} Produk</p>
+                          <p className="text-xl font-bold text-slate-800 tracking-tight">{stat.value}</p>
                           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/60 p-1 rounded-xl" onClick={(e) => e.stopPropagation()}>
                             <button
                               onClick={() => setCriticalThreshold(prev => Math.max(0, prev - 1))}
@@ -707,13 +757,13 @@ export default function Produk() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100/50">
-                      {displayedProducts.map((product, index) => {
+                      {paginatedProducts.map((product, index) => {
 
                         const isLowStock = (product.stock ?? 0) <= criticalThreshold
                         return (
                           <tr key={product.id} className="hover:bg-slate-50/40 transition-colors group">
                             <td className="px-6 py-5 text-center text-xs font-semibold text-slate-400 w-12">
-                              {index + 1}
+                              {startIndex + index + 1}
                             </td>
                             <td className="px-6 py-5">
                               <p className="font-semibold text-slate-700 leading-tight mb-1.5 text-xs">{product.name}</p>
@@ -763,6 +813,65 @@ export default function Produk() {
                   </table>
                 )}
               </div>
+
+              {/* PAGINATION CONTROLS */}
+              {displayedProducts.length > 0 && (
+                <div className="px-6 py-5 border-t border-slate-100 bg-white flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="text-xs text-slate-500 font-medium">
+                    Menampilkan <span className="font-bold text-slate-700">{startIndex + 1}</span> - <span className="font-bold text-slate-700">{Math.min(startIndex + itemsPerPage, displayedProducts.length)}</span> dari <span className="font-bold text-slate-700">{displayedProducts.length}</span> produk
+                  </div>
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-1.5">
+                      {/* Prev Button */}
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={activePage === 1}
+                        className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 disabled:opacity-40 disabled:hover:bg-transparent transition-all active:scale-95 disabled:scale-100 flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
+                        title="Halaman Sebelumnya"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                        </svg>
+                      </button>
+
+                      {/* Page Numbers */}
+                      {getPageNumbers().map((num, i) => {
+                        if (num === '...') {
+                          return (
+                            <span key={`dots-${i}`} className="w-9 h-9 flex items-center justify-center text-xs font-bold text-slate-400">
+                              ...
+                            </span>
+                          )
+                        }
+                        const isActive = num === activePage
+                        return (
+                          <button
+                            key={`page-${num}`}
+                            onClick={() => setCurrentPage(num)}
+                            className={`w-9 h-9 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center cursor-pointer
+                              ${isActive ? 'text-white shadow-md' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                            style={isActive ? { backgroundColor: primaryColor, boxShadow: `0 4px 10px ${primaryColor}20` } : {}}
+                          >
+                            {num}
+                          </button>
+                        )
+                      })}
+
+                      {/* Next Button */}
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={activePage === totalPages}
+                        className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 disabled:opacity-40 disabled:hover:bg-transparent transition-all active:scale-95 disabled:scale-100 flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
+                        title="Halaman Selanjutnya"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
           </div>
         </div>

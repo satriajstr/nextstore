@@ -138,6 +138,8 @@ export default function Home() {
       if (storedCategory !== null) {
         setShowCategoryFilter(storedCategory !== 'false')
       }
+      const isMobile = window.innerWidth < 768
+      setGridCols(isMobile ? 2 : 3)
     }
   }, [])
 
@@ -638,10 +640,19 @@ export default function Home() {
                 <button
                   key={m}
                   onClick={() => setPaymentMethod(m)}
-                  className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all
+                  className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center
                     ${paymentMethod === m ? 'bg-white text-pink-500 shadow-sm border border-pink-100' : 'text-gray-400 hover:text-gray-600'}`}
                 >
-                  {m}
+                  {m === 'Tunai' ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 mr-1.5 inline-block shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5h16.5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H3.75A1.5 1.5 0 0 1 2.25 18V6a1.5 1.5 0 0 1 1.5-1.5zm10.5 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 mr-1.5 inline-block shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75h4.5v4.5h-4.5zM15.75 3.75h4.5v4.5h-4.5zM3.75 15.75h4.5v4.5h-4.5zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z" />
+                    </svg>
+                  )}
+                  <span>{m}</span>
                 </button>
               ))}
             </div>
@@ -1128,8 +1139,8 @@ export default function Home() {
                 <button
                   disabled={cart.length === 0 || processing || isClosed}
                   onClick={() => {
-                    setAmountReceived('')
-                    setSelectedQuickCash(null)
+                    setAmountReceived(totalTagihan.toString())
+                    setSelectedQuickCash('UANG PAS')
                     setShowCheckoutModal(true)
                   }}
                   className={`w-full py-5 rounded-[2rem] font-bold text-lg transition-all shadow-xl active:scale-[0.98]

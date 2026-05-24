@@ -6,7 +6,7 @@ import { useState } from 'react'
  * Grafik garis rekap penjualan & keuntungan harian (sama dengan dashboard admin).
  * @param {{ data: { date: string, total_penjualan: number, keuntungan_bersih: number }[], primaryColor: string, formatIDR: (n: number) => string, height?: number }} props
  */
-export default function SalesLineChart({ data, primaryColor, formatIDR, height = 110 }) {
+export default function SalesLineChart({ data, primaryColor, formatIDR, height = 110, onPointClick }) {
   const [hovered, setHovered] = useState(null)
   const W = 520
   const H = height
@@ -39,7 +39,13 @@ export default function SalesLineChart({ data, primaryColor, formatIDR, height =
         <path d={salesPath} fill="none" stroke={primaryColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         <path d={profitPath} fill="none" stroke={primaryColor} strokeWidth="1.5" strokeDasharray="4 3" strokeOpacity="0.45" strokeLinecap="round" strokeLinejoin="round" />
         {data.map((d, i) => (
-          <g key={d.date} onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)} style={{ cursor: 'pointer' }}>
+          <g
+            key={d.date}
+            onMouseEnter={() => setHovered(i)}
+            onMouseLeave={() => setHovered(null)}
+            onClick={() => onPointClick && onPointClick(d.date)}
+            style={{ cursor: 'pointer' }}
+          >
             <circle cx={px(i)} cy={py(d.total_penjualan)} r={12} fill="transparent" />
             <circle cx={px(i)} cy={py(d.total_penjualan)} r={hovered === i ? 5 : 3} fill="white" stroke={primaryColor} strokeWidth="2" />
           </g>
@@ -48,7 +54,7 @@ export default function SalesLineChart({ data, primaryColor, formatIDR, height =
 
       {hovered !== null && (
         <div
-          className="absolute -top-14 pointer-events-none z-10"
+          className="absolute -top-[4.75rem] pointer-events-none z-10 animate-ai-in"
           style={{
             left: tooltipLeft(hovered),
             transform:
@@ -60,7 +66,10 @@ export default function SalesLineChart({ data, primaryColor, formatIDR, height =
           }}
         >
           <div className="bg-slate-800 text-white rounded-xl px-3 py-2 text-[10px] font-bold whitespace-nowrap shadow-xl">
-            <div>{formatIDR(data[hovered].total_penjualan)}</div>
+            <div className="text-slate-400 font-medium border-b border-slate-700/50 pb-0.5 mb-1 text-[8px] uppercase tracking-wider">
+              {new Date(data[hovered].date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}
+            </div>
+            <div>Jual: {formatIDR(data[hovered].total_penjualan)}</div>
             <div className="text-emerald-400 font-semibold mt-0.5">Untung: {formatIDR(data[hovered].keuntungan_bersih)}</div>
           </div>
         </div>
