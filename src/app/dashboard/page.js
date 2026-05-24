@@ -204,7 +204,7 @@ export default function Dashboard() {
         (hasOperatingHours
           ? `\n\nPeringatan: Jam operasional aktif. Kasir akan otomatis terbuka besok pada jam ${operatingHours.open} WIB.`
           : ''),
-      labelYes: 'Tutup Hari',
+      labelYes: 'Tutup',
       labelNo: 'Batal',
     })
     if (!confirmed) return
@@ -300,7 +300,7 @@ export default function Dashboard() {
       fetchDashboardData()
     } catch (err) {
       console.error("CLOSE DAY ERROR:", err)
-      showToast(`Gagal tutup hari: ${err.message || 'Periksa koneksi database.'}`, 'error')
+      showToast(`Gagal tutup: ${err.message || 'Periksa koneksi database.'}`, 'error')
     } finally {
       setClosing(false)
     }
@@ -313,72 +313,27 @@ export default function Dashboard() {
       icon: '🔓',
       title: 'Buka Kembali Hari Ini?',
       message: 'Status laporan akan menjadi "Terbuka". Data riwayat tetap tersimpan.',
-      labelYes: 'Buka Hari',
+      labelYes: 'Buka',
       labelNo: 'Batal',
     })
     if (!confirmed) return
 
-    const resetData = await showConfirm({
-      icon: '🗑️',
-      title: 'Hapus Semua Transaksi?',
-      message: 'Semua transaksi hari ini akan dihapus dan total penjualan kembali ke Rp 0.\nPenjualan baru akan diakumulasi ke rekap sebelumnya.',
-      labelYes: 'Reset Transaksi',
-      labelNo: 'Tidak, Simpan',
-      danger: true,
-    })
-
     const today = getTodayId()
-    const startLocal = new Date(`${today}T00:00:00+07:00`).toISOString()
-    const endLocal = new Date(new Date(`${today}T00:00:00+07:00`).getTime() + 86400000).toISOString()
 
     try {
-      if (resetData) {
-        const { data: currentSummary, error: summaryErr } = await supabase
-          .from('daily_summary')
-          .select('total_penjualan, total_modal, total_diskon, jumlah_transaksi')
-          .eq('store_id', profile.store_id)
-          .eq('date', today)
-          .single()
-        if (summaryErr) throw summaryErr
-
-        await supabase
-          .from('daily_summary')
-          .update({
-            status: 'open',
-            carry_over: currentSummary?.total_penjualan ?? 0,
-            carry_modal: currentSummary?.total_modal ?? 0,
-            carry_diskon: currentSummary?.total_diskon ?? 0,
-            carry_trx_count: currentSummary?.jumlah_transaksi ?? 0
-          })
-          .eq('store_id', profile.store_id)
-          .eq('date', today)
-
-        if (transactions.length > 0) {
-          await supabase.from('transaction_items').delete().in('transaction_id', transactions.map(t => t.id))
-          await supabase
-            .from('transactions')
-            .delete()
-            .eq('store_id', profile.store_id)
-            .gte('created_at', startLocal)
-            .lt('created_at', endLocal)
-        }
-
-        showToast('Hari dibuka. Transaksi direset.', 'success')
-      } else {
-        const { error } = await supabase
-          .from('daily_summary')
-          .update({ status: 'open' })
-          .eq('store_id', profile.store_id)
-          .eq('date', today)
-        if (error) throw error
-        showToast('Hari dibuka kembali. Data penjualan tetap ada.', 'success')
-      }
+      const { error } = await supabase
+        .from('daily_summary')
+        .update({ status: 'open' })
+        .eq('store_id', profile.store_id)
+        .eq('date', today)
+      if (error) throw error
+      showToast('Berhasil dibuka kembali. Data penjualan tetap ada.', 'success')
 
       setIsClosed(false)
       fetchDashboardData()
     } catch (err) {
       console.error(err)
-      showToast(`Gagal membuka hari: ${err.message || ''}`, 'error')
+      showToast(`Gagal membuka: ${err.message || ''}`, 'error')
     }
   }
 
@@ -495,14 +450,14 @@ export default function Dashboard() {
                     disabled={closing}
                     className="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg transition-all active:scale-95 disabled:opacity-50 text-xs uppercase tracking-wider whitespace-nowrap"
                   >
-                    {closing ? '...' : 'Tutup Hari'}
+                    {closing ? '...' : 'Tutup'}
                   </button>
                 ) : (
                   <button
                     onClick={handleOpenDay}
                     className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg hover:bg-emerald-700 transition-all active:scale-95 text-xs uppercase tracking-wider whitespace-nowrap"
                   >
-                    Buka Hari
+                    Buka
                   </button>
                 )}
               </div>

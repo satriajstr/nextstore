@@ -638,10 +638,19 @@ export default function Home() {
                 <button
                   key={m}
                   onClick={() => setPaymentMethod(m)}
-                  className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all
+                  className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center
                     ${paymentMethod === m ? 'bg-white text-pink-500 shadow-sm border border-pink-100' : 'text-gray-400 hover:text-gray-600'}`}
                 >
-                  {m}
+                  {m === 'Tunai' ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 mr-1.5 inline-block shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 mr-1.5 inline-block shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75h4.5v4.5h-4.5zM15.75 3.75h4.5v4.5h-4.5zM3.75 15.75h4.5v4.5h-4.5zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z" />
+                    </svg>
+                  )}
+                  <span>{m}</span>
                 </button>
               ))}
             </div>
@@ -1128,8 +1137,8 @@ export default function Home() {
                 <button
                   disabled={cart.length === 0 || processing || isClosed}
                   onClick={() => {
-                    setAmountReceived('')
-                    setSelectedQuickCash(null)
+                    setAmountReceived(totalTagihan.toString())
+                    setSelectedQuickCash('UANG PAS')
                     setShowCheckoutModal(true)
                   }}
                   className={`w-full py-5 rounded-[2rem] font-bold text-lg transition-all shadow-xl active:scale-[0.98]
