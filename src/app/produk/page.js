@@ -680,9 +680,9 @@ export default function Produk() {
                     </div>
                     {stat.type === 'critical' ? (
                       <div>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Stok Kritis</p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Stok Kritis(&lt;=)</p>
                         <div className="flex items-center justify-between mt-1">
-                          <p className="text-xl font-bold text-slate-800 tracking-tight">{stat.value} Produk</p>
+                          <p className="text-xl font-bold text-slate-800 tracking-tight">{stat.value}</p>
                           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/60 p-1 rounded-xl" onClick={(e) => e.stopPropagation()}>
                             <button
                               onClick={() => setCriticalThreshold(prev => Math.max(0, prev - 1))}

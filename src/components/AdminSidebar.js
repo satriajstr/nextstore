@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { signOut } from '../lib/auth'
+import { signOut, getUserProfile } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../lib/ThemeContext'
 import { useState, useEffect } from 'react'
@@ -19,7 +19,7 @@ const navItems = [
   },
   {
     href: '/produk',
-    label: 'Manajemen Produk',
+    label: 'Kelola Produk',
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
@@ -126,6 +126,36 @@ export default function AdminSidebar() {
   const [pwLoading, setPwLoading] = useState(false)
   const [pwMessage, setPwMessage] = useState(null)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const [hasCriticalStock, setHasCriticalStock] = useState(false)
+
+  useEffect(() => {
+    const checkCriticalStock = async () => {
+      try {
+        const profile = await getUserProfile()
+        if (!profile?.store_id) return
+
+        const savedThreshold = typeof window !== 'undefined'
+          ? parseInt(localStorage.getItem('critical_stock_threshold')) || 3
+          : 3
+
+        const { data, error } = await supabase
+          .from('products')
+          .select('id')
+          .eq('store_id', profile.store_id)
+          .lte('stock', savedThreshold)
+          .limit(1)
+
+        if (error) throw error
+        setHasCriticalStock(data && data.length > 0)
+      } catch (err) {
+        console.error('Error checking critical stock in sidebar:', err)
+      }
+    }
+
+    checkCriticalStock()
+    const interval = setInterval(checkCriticalStock, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebar_collapsed')
@@ -294,16 +324,30 @@ export default function AdminSidebar() {
                 {!collapsed && (
                   <>
                     <span className="whitespace-nowrap transition-opacity duration-300">{item.label}</span>
-                    {isActive && (
+                    {item.href === '/produk' && hasCriticalStock && (
+                      <span className={`ml-auto flex h-2.5 w-2.5 relative shrink-0 ${isActive ? 'mr-1' : ''}`}>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                      </span>
+                    )}
+                    {isActive && !(item.href === '/produk' && hasCriticalStock) && (
                       <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/60 flex-shrink-0" />
                     )}
                   </>
                 )}
 
+                {collapsed && item.href === '/produk' && hasCriticalStock && (
+                  <span className="absolute top-2 right-2 flex h-2 w-2 z-20">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                  </span>
+                )}
+
                 {collapsed && (
                   <CollapsedFlyout
                     label={item.label}
-                    accent={primaryColor}
+                    sublabel={item.href === '/produk' && hasCriticalStock ? 'Stok Kritis' : undefined}
+                    accent={item.href === '/produk' && hasCriticalStock ? '#f43f5e' : primaryColor}
                     active={isActive}
                     icon={item.icon}
                   />
@@ -329,9 +373,9 @@ export default function AdminSidebar() {
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
             </svg>
-            {!collapsed && <span className="whitespace-nowrap">Ciutkan</span>}
+            {!collapsed && <span className="whitespace-nowrap">Collapse</span>}
             {collapsed && (
-              <CollapsedFlyout label="Perluas Sidebar" accent={primaryColor} />
+              <CollapsedFlyout label="Perluas Navigasi" accent={primaryColor} />
             )}
           </button>
         </div>
@@ -341,8 +385,8 @@ export default function AdminSidebar() {
           <button
             onClick={() => setShowChangePassword(true)}
             className={`relative z-10 ${collapsed
-                ? `${iconBtnCollapsed} text-amber-500 hover:bg-amber-50 hover:text-amber-600`
-                : `${iconBtnExpanded} text-amber-500 hover:bg-amber-50 hover:text-amber-600 !py-2.5`
+              ? `${iconBtnCollapsed} text-amber-500 hover:bg-amber-50 hover:text-amber-600`
+              : `${iconBtnExpanded} text-amber-500 hover:bg-amber-50 hover:text-amber-600 !py-2.5`
               }`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
@@ -365,8 +409,8 @@ export default function AdminSidebar() {
           <button
             onClick={() => setShowLogoutConfirm(true)}
             className={`relative z-10 ${collapsed
-                ? `${iconBtnCollapsed} text-red-400 hover:bg-red-50 hover:text-red-600`
-                : `${iconBtnExpanded} text-red-400 hover:bg-red-50 hover:text-red-600`
+              ? `${iconBtnCollapsed} text-red-400 hover:bg-red-50 hover:text-red-600`
+              : `${iconBtnExpanded} text-red-400 hover:bg-red-50 hover:text-red-600`
               }`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">

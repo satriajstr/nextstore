@@ -138,6 +138,8 @@ export default function Home() {
       if (storedCategory !== null) {
         setShowCategoryFilter(storedCategory !== 'false')
       }
+      const isMobile = window.innerWidth < 768
+      setGridCols(isMobile ? 2 : 3)
     }
   }, [])
 
@@ -643,7 +645,7 @@ export default function Home() {
                 >
                   {m === 'Tunai' ? (
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 mr-1.5 inline-block shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5h16.5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H3.75A1.5 1.5 0 0 1 2.25 18V6a1.5 1.5 0 0 1 1.5-1.5zm10.5 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
                     </svg>
                   ) : (
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 mr-1.5 inline-block shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">

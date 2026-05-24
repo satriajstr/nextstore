@@ -10,6 +10,7 @@ import SalesLineChart from '../../components/SalesLineChart'
 import { useTheme } from '../../lib/ThemeContext'
 import { getStoreHoursStatus } from '../../lib/storeHours'
 import { getTodayId } from '../../lib/dateId'
+import { autoClosePastDays } from '../../lib/autoClose'
 
 // ─── Custom Toast Component ──────────────────────────────────────────────────
 function Toast({ toast, onClose }) {
@@ -84,13 +85,77 @@ function ConfirmDialog({ confirm, onYes, onNo }) {
   )
 }
 
+// ─── Custom Auto Close Warning Modal Component ─────────────────────────────
+function AutoCloseModal({ isOpen, onClose, closedDays, formatIDR, primaryColor }) {
+  if (!isOpen || !closedDays || closedDays.length === 0) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md p-4 text-center animate-fade-in">
+      <div className="bg-white rounded-[2rem] shadow-2xl max-w-lg w-full p-8 flex flex-col gap-6 text-left max-h-[85vh] overflow-y-auto">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-rose-100">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-rose-500 animate-pulse" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0-10.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.75c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.249-8.25-3.286Zm0 13.036h.008v.008H12v-.008Z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-black text-slate-800 tracking-tight">Sesi Terlupakan Ditutup Otomatis 🔒</h2>
+          <p className="text-slate-400 text-xs mt-2 leading-relaxed">
+            Sistem mendeteksi ada hari operasional sebelumnya yang belum ditutup. Untuk memastikan keakuratan laporan penjualan, sistem telah merapikan dan menutup hari-hari berikut secara otomatis:
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-3 my-2 overflow-y-auto max-h-[40vh] pr-1">
+          {closedDays.map((day) => {
+            const formattedDate = new Date(day.date).toLocaleDateString('id-ID', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric'
+            })
+            return (
+              <div 
+                key={day.date} 
+                className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-100/50 transition-colors"
+              >
+                <div>
+                  <p className="text-xs font-bold text-slate-700">{formattedDate}</p>
+                  <p className="text-[10px] text-slate-400 font-semibold mt-0.5">{day.jumlahTrx} Transaksi Berhasil</p>
+                </div>
+                <div className="flex sm:flex-col sm:items-end justify-between items-center shrink-0">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Omzet / Laba Bersih</span>
+                  <p className="text-xs font-black" style={{ color: primaryColor }}>
+                    {formatIDR(day.totalPenjualan)} <span className="text-[9px] text-slate-400 font-normal">/</span> <span className="text-emerald-600 font-black">{formatIDR(day.keuntunganBersih)}</span>
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="flex justify-end pt-2 border-t border-slate-100">
+          <button
+            onClick={onClose}
+            className="w-full sm:w-auto px-6 py-3 rounded-2xl text-white font-bold transition-all active:scale-95 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 shrink-0 cursor-pointer"
+            style={{ 
+              background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColor}dd 100%)`,
+              boxShadow: `0 4px 14px -4px ${primaryColor}`
+            }}
+          >
+            Mengerti & Lanjutkan
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const { primaryColor, storeName } = useTheme()
   const router = useRouter()
 
   const [profile, setProfile] = useState(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
-  
+
   // States for Card
   const [transactions, setTransactions] = useState([])
   const [isClosed, setIsClosed] = useState(false)
@@ -98,9 +163,14 @@ export default function Dashboard() {
   const [toast, setToast] = useState(null)
   const [hasOperatingHours, setHasOperatingHours] = useState(false)
   const [operatingHours, setOperatingHours] = useState({ open: '', close: '' })
-  
+
   // Custom Confirm Dialog State
   const [confirmState, setConfirmState] = useState(null)
+
+  // Auto Close States
+  const [autoClosedDays, setAutoClosedDays] = useState([])
+  const [showAutoCloseModal, setShowAutoCloseModal] = useState(false)
+  const [hasCheckedAutoClose, setHasCheckedAutoClose] = useState(false)
 
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type })
@@ -178,7 +248,7 @@ export default function Dashboard() {
         .eq('store_id', profile.store_id)
         .eq('date', today)
         .maybeSingle()
-      
+
       setIsClosed(summaryData?.status === 'closed')
     } catch (err) {
       console.error(err)
@@ -186,10 +256,25 @@ export default function Dashboard() {
   }, [profile?.store_id])
 
   useEffect(() => {
-    if (profile?.store_id) {
-      fetchDashboardData()
+    const initDashboard = async () => {
+      if (profile?.store_id) {
+        if (!hasCheckedAutoClose) {
+          setHasCheckedAutoClose(true)
+          try {
+            const closed = await autoClosePastDays(supabase, profile.store_id)
+            if (closed && closed.length > 0) {
+              setAutoClosedDays(closed)
+              setShowAutoCloseModal(true)
+            }
+          } catch (err) {
+            console.error("Auto close error in dashboard:", err)
+          }
+        }
+        fetchDashboardData()
+      }
     }
-  }, [profile?.store_id, fetchDashboardData])
+    initDashboard()
+  }, [profile?.store_id, hasCheckedAutoClose, fetchDashboardData])
 
   const handleCloseDay = async () => {
     if (isClosed) return
@@ -250,9 +335,9 @@ export default function Dashboard() {
           .select('quantity, products (harga_modal)')
           .in('transaction_id', trxIds)
         if (itemErr) throw itemErr
-        ;(items || []).forEach(item => {
-          modalSesi += (item.products?.harga_modal ?? 0) * item.quantity
-        })
+          ; (items || []).forEach(item => {
+            modalSesi += (item.products?.harga_modal ?? 0) * item.quantity
+          })
       }
 
       // Jika tidak ada transaksi baru hari ini, jangan buat nilai rekap baru.
@@ -390,6 +475,13 @@ export default function Dashboard() {
     <>
       <Toast toast={toast} onClose={() => setToast(null)} />
       <ConfirmDialog confirm={confirmState} onYes={handleConfirmYes} onNo={handleConfirmNo} />
+      <AutoCloseModal
+        isOpen={showAutoCloseModal}
+        onClose={() => setShowAutoCloseModal(false)}
+        closedDays={autoClosedDays}
+        formatIDR={formatIDR}
+        primaryColor={primaryColor}
+      />
 
       <main className="flex min-h-screen bg-gray-50 text-slate-800 font-sans">
         <AdminSidebar />
@@ -399,96 +491,106 @@ export default function Dashboard() {
               <h1 className="text-3xl font-semibold tracking-tight" style={{ color: primaryColor }}>Dashboard</h1>
               <p className="text-slate-400 text-sm mt-1">Selamat datang, Admin {profile?.full_name ?? storeName}.</p>
             </header>
-            
+
             {/* CARD TOTAL PENJUALAN + AI ASSISTANT */}
             <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 mb-8">
 
-            {/* EXACT CARD FROM LAPORAN PAGE */}
-            <section 
-              className="border-2 shadow-md shadow-slate-100/50 hover:shadow-lg hover:-translate-y-1 rounded-[2rem] p-8 flex flex-col md:flex-row justify-between items-center gap-6 transition-all duration-300"
-              style={{ 
-                borderColor: isClosed ? 'rgba(148, 163, 184, 0.35)' : `${primaryColor}30`,
-                background: isClosed
-                  ? 'linear-gradient(135deg, rgba(148,163,184,0.18) 0%, rgba(148,163,184,0.08) 60%, #ffffff 100%)'
-                  : `linear-gradient(135deg, ${primaryColor}25 0%, ${primaryColor}10 60%, #ffffff 100%)`
-              }}
-            >
-              <div className="text-left w-full md:w-auto">
-                <div className="flex items-center gap-2 mb-2">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    {isClosed ? 'Rekap Penjualan (HARI DITUTUP)' : 'Total Penjualan Hari Ini'}
-                  </p>
-                  {isClosed && <span className="bg-emerald-500 text-white text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest">Locked</span>}
-                </div>
-                <h2 className="text-3xl md:text-4xl font-black tracking-tight" style={{ color: isClosed ? '#64748b' : primaryColor }}>
-                  {formatIDR(totalHariIni)}
-                </h2>
-                <div className="flex gap-4 mt-4">
-                  <div className="flex flex-col">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Tunai</span>
-                    <span className="text-base font-bold text-emerald-600">{formatIDR(totalCash)}</span>
+              {/* EXACT CARD FROM LAPORAN PAGE */}
+              <section
+                className="border-2 shadow-md shadow-slate-100/50 hover:shadow-lg hover:-translate-y-1 rounded-[2rem] p-8 flex flex-col md:flex-row justify-between items-center gap-6 transition-all duration-300"
+                style={{
+                  borderColor: isClosed ? 'rgba(148, 163, 184, 0.35)' : `${primaryColor}30`,
+                  background: isClosed
+                    ? 'linear-gradient(135deg, rgba(148,163,184,0.18) 0%, rgba(148,163,184,0.08) 60%, #ffffff 100%)'
+                    : `linear-gradient(135deg, ${primaryColor}25 0%, ${primaryColor}10 60%, #ffffff 100%)`
+                }}
+              >
+                <div className="text-left w-full md:w-auto">
+                  <div className="flex items-center gap-2 mb-2">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      {isClosed ? 'Rekap Penjualan (HARI DITUTUP)' : 'Total Penjualan Hari Ini'}
+                    </p>
+                    {isClosed && <span className="bg-emerald-500 text-white text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest">Locked</span>}
                   </div>
-                  <div className="w-[1px] h-8 bg-slate-200/80 self-center"></div>
-                  <div className="flex flex-col">
-                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">QRIS / Non-Tunai</span>
-                    <span className="text-base font-bold text-red-600">{formatIDR(totalQRIS)}</span>
+                  <h2 className="text-3xl md:text-4xl font-black tracking-tight" style={{ color: isClosed ? '#64748b' : primaryColor }}>
+                    {formatIDR(totalHariIni)}
+                  </h2>
+                  <div className="flex gap-4 mt-4">
+                    <div className="flex flex-col">
+                      <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5h16.5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H3.75A1.5 1.5 0 0 1 2.25 18V6a1.5 1.5 0 0 1 1.5-1.5zm10.5 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
+                        </svg>
+                        Tunai
+                      </span>
+                      <span className="text-base font-bold text-emerald-600">{formatIDR(totalCash)}</span>
+                    </div>
+                    <div className="w-[1px] h-8 bg-slate-200/80 self-center"></div>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75h4.5v4.5h-4.5zM15.75 3.75h4.5v4.5h-4.5zM3.75 15.75h4.5v4.5h-4.5zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z" />
+                        </svg>
+                        QRIS / Non-Tunai
+                      </span>
+                      <span className="text-base font-bold text-red-600">{formatIDR(totalQRIS)}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-3 md:ml-auto shrink-0">
-                <div className="text-right">
-                  <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Transaksi</p>
-                  <p className="text-xl font-black text-slate-800">{transactions.length}</p>
+                <div className="flex items-center gap-3 md:ml-auto shrink-0">
+                  <div className="text-right">
+                    <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Transaksi</p>
+                    <p className="text-xl font-black text-slate-800">{transactions.length}</p>
+                  </div>
+
+                  <div className="w-px h-8 bg-slate-200/80" />
+
+                  {!isClosed ? (
+                    <button
+                      onClick={handleCloseDay}
+                      disabled={closing}
+                      className="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg transition-all active:scale-95 disabled:opacity-50 text-xs uppercase tracking-wider whitespace-nowrap"
+                    >
+                      {closing ? '...' : 'Tutup'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleOpenDay}
+                      className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg hover:bg-emerald-700 transition-all active:scale-95 text-xs uppercase tracking-wider whitespace-nowrap"
+                    >
+                      Buka
+                    </button>
+                  )}
                 </div>
+              </section>
 
-                <div className="w-px h-8 bg-slate-200/80" />
-
-                {!isClosed ? (
-                  <button
-                    onClick={handleCloseDay}
-                    disabled={closing}
-                    className="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg transition-all active:scale-95 disabled:opacity-50 text-xs uppercase tracking-wider whitespace-nowrap"
-                  >
-                    {closing ? '...' : 'Tutup'}
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleOpenDay}
-                    className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg hover:bg-emerald-700 transition-all active:scale-95 text-xs uppercase tracking-wider whitespace-nowrap"
-                  >
-                    Buka
-                  </button>
-                )}
-              </div>
-            </section>
-
-            {/* AI ASSISTANT CARD */}
-            <section
-              onClick={() => router.push('/owner/assistant-ai')}
-              className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-6 w-full md:w-[200px] shrink-0 flex flex-col justify-between cursor-pointer transition-all duration-300"
-              style={{ outline: '2px solid transparent' }}
-              onMouseEnter={e => e.currentTarget.style.outline = `2px solid ${primaryColor}40`}
-              onMouseLeave={e => e.currentTarget.style.outline = '2px solid transparent'}
-            >
-              <div>
-                <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: `${primaryColor}15` }}>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
-                  </svg>
+              {/* AI ASSISTANT CARD */}
+              <section
+                onClick={() => router.push('/owner/assistant-ai')}
+                className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-6 w-full md:w-[200px] shrink-0 flex flex-col justify-between cursor-pointer transition-all duration-300"
+                style={{ outline: '2px solid transparent' }}
+                onMouseEnter={e => e.currentTarget.style.outline = `2px solid ${primaryColor}40`}
+                onMouseLeave={e => e.currentTarget.style.outline = '2px solid transparent'}
+              >
+                <div>
+                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: `${primaryColor}15` }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                    </svg>
+                  </div>
+                  <p className="text-xs font-bold text-slate-800 leading-snug">Assistant AI</p>
+                  <p className="text-[10px] text-slate-400 font-medium mt-1 leading-relaxed">Analisis bisnis & rekomendasi cerdas untuk toko Anda.</p>
                 </div>
-                <p className="text-xs font-bold text-slate-800 leading-snug">Assistant AI</p>
-                <p className="text-[10px] text-slate-400 font-medium mt-1 leading-relaxed">Analisis bisnis & rekomendasi cerdas untuk toko Anda.</p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-50 flex justify-end">
-                <span className="text-[9px] font-bold text-slate-400 group-hover:text-slate-600 transition-colors flex items-center gap-1">
-                  Buka Asisten
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-2.5 h-2.5 transform group-hover:translate-x-0.5 transition-transform">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                  </svg>
-                </span>
-              </div>
-            </section>
+                <div className="mt-4 pt-3 border-t border-slate-50 flex justify-end">
+                  <span className="text-[9px] font-bold text-slate-400 group-hover:text-slate-600 transition-colors flex items-center gap-1">
+                    Buka Asisten
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-2.5 h-2.5 transform group-hover:translate-x-0.5 transition-transform">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                    </svg>
+                  </span>
+                </div>
+              </section>
 
             </div>
             <div className="grid grid-cols-1 md:grid-cols-[1fr_200px_200px] gap-4 mb-8">
@@ -510,7 +612,7 @@ export default function Dashboard() {
                         </svg>
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-slate-800">Rekap Penjualan</p>
+                        <p className="text-sm font-bold text-slate-800">Riwayat Penjualan</p>
                         <p className="text-[10px] text-slate-400 font-medium mt-0.5">7 hari terakhir</p>
                       </div>
                     </div>
@@ -568,9 +670,8 @@ export default function Dashboard() {
                           </div>
                           <div className="flex flex-col items-end shrink-0 gap-0.5">
                             <span className="text-[10px] font-black" style={{ color: primaryColor }}>{formatIDR(trx.total_harga)}</span>
-                            <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
-                              trx.payment_method === 'Tunai' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'
-                            }`}>{trx.payment_method || 'Tunai'}</span>
+                            <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${trx.payment_method === 'Tunai' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'
+                              }`}>{trx.payment_method || 'Tunai'}</span>
                           </div>
                         </div>
                       )
@@ -615,9 +716,8 @@ export default function Dashboard() {
                     {criticalStock.map((p) => (
                       <div key={p.id} className="flex items-center justify-between py-2.5 gap-3">
                         <p className="text-[11px] font-semibold text-slate-700 truncate">{p.name}</p>
-                        <span className={`text-[10px] font-bold shrink-0 ${
-                          p.stock === 0 ? 'text-rose-500' : 'text-slate-400'
-                        }`}>{p.stock === 0 ? 'Habis' : p.stock}</span>
+                        <span className={`text-[10px] font-bold shrink-0 ${p.stock === 0 ? 'text-rose-500' : 'text-slate-400'
+                          }`}>{p.stock === 0 ? 'Habis' : p.stock}</span>
                       </div>
                     ))}
                   </div>
