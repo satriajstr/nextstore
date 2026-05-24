@@ -743,27 +743,36 @@ function LaporanContent() {
     setIsClosed(data?.status === 'closed')
   }, [profile?.store_id])
 
+  // 1. Jalankan pemeriksaan auto-close sekali saat admin masuk halaman laporan
   useEffect(() => {
-    const initLaporan = async () => {
-      if (profile?.store_id) {
-        if (!hasCheckedAutoClose) {
-          setHasCheckedAutoClose(true)
-          try {
-            const closed = await autoClosePastDays(supabase, profile.store_id)
-            if (closed && closed.length > 0) {
-              showToast(`Sistem otomatis menutup ${closed.length} hari penjualan sebelumnya yang terlewat agar laporan sinkron.`, 'success')
-            }
-          } catch (err) {
-            console.error("Auto close error in Laporan:", err)
+    const runAutoClose = async () => {
+      if (profile?.store_id && !hasCheckedAutoClose) {
+        setHasCheckedAutoClose(true)
+        try {
+          const closed = await autoClosePastDays(supabase, profile.store_id)
+          if (closed && closed.length > 0) {
+            showToast(`Sistem otomatis menutup ${closed.length} hari penjualan sebelumnya yang terlewat agar laporan sinkron.`, 'success')
+            // Refresh data agar langsung mutakhir setelah auto-close
+            fetchTransactions()
+            checkStatus()
+            fetchHistory()
           }
+        } catch (err) {
+          console.error("Auto close error in Laporan:", err)
         }
-        fetchTransactions()
-        checkStatus()
-        fetchHistory()
       }
     }
-    initLaporan()
+    runAutoClose()
   }, [profile?.store_id, hasCheckedAutoClose, fetchTransactions, checkStatus, fetchHistory, showToast])
+
+  // 2. Load data transaksi awal saat profil terisi
+  useEffect(() => {
+    if (profile?.store_id) {
+      fetchTransactions()
+      checkStatus()
+      fetchHistory()
+    }
+  }, [profile?.store_id, fetchTransactions, checkStatus, fetchHistory])
 
   useEffect(() => {
     if (profile?.store_id && activeTab === 'riwayat' && showChart) {
