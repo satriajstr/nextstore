@@ -482,7 +482,7 @@ function LaporanContent() {
       }
 
       if (userProfile.role === 'kasir') {
-        router.replace('/')
+        router.replace('/kasir')
         return
       }
 

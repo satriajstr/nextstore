@@ -125,6 +125,7 @@ export default function KasirManagement() {
 
       const userProfile = await getUserProfile()
       if (!userProfile || userProfile.role !== 'admin') {
+        await supabase.auth.signOut()
         router.replace('/login')
         return
       }

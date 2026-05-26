@@ -50,7 +50,7 @@ export default function Kustomisasi() {
 
       const userProfile = await getUserProfile()
       if (!userProfile) { await supabase.auth.signOut(); router.replace('/login'); return }
-      if (userProfile.role === 'kasir') { router.replace('/'); return }
+      if (userProfile.role === 'kasir') { router.replace('/kasir'); return }
 
       // Fetch current store settings from DB
       const { data: store } = await supabase
