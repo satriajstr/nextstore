@@ -28,7 +28,7 @@ export default function Login() {
     if (role === 'admin') {
       router.replace('/dashboard')
     } else if (role === 'kasir') {
-      router.replace('/')
+      router.replace('/kasir')
     } else {
       // Role tidak dikenali / tidak ada di tabel profiles
       setError('Akun Anda belum memiliki role. Hubungi Admin.')
