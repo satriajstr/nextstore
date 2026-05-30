@@ -1,5 +1,6 @@
 import "./globals.css";
 import { ThemeProvider } from '../lib/ThemeContext';
+import DynamicFavicon from '../components/DynamicFavicon';
 
 export const metadata = {
   title: "NextStore",
@@ -16,9 +17,11 @@ export default function RootLayout({ children }) {
       </head>
       <body className="antialiased" style={{ fontFamily: "'Inter', sans-serif", letterSpacing: "-0.01em" }}>
         <ThemeProvider>
+          <DynamicFavicon />
           {children}
         </ThemeProvider>
       </body>
     </html>
   );
 }
+

@@ -682,6 +682,7 @@ function LaporanContent() {
       .from('daily_summary')
       .select('date, total_penjualan, keuntungan_bersih')
       .eq('store_id', profile.store_id)
+      .gt('jumlah_transaksi', 0)
       .order('date', { ascending: false })
       .limit(chartDays)
     if (error) console.error('Error fetching chart history:', error)

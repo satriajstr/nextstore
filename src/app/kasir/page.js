@@ -439,17 +439,7 @@ export default function Home() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Sesi tidak ditemukan. Silakan login ulang.')
 
-      // 2. Verifikasi password saat ini
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password: currentPassword,
-      })
-
-      if (signInError) {
-        throw new Error('Password lama salah.')
-      }
-
-      // 3. Update ke password baru
+      // 2. Update ke password baru
       const { error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
 
@@ -520,10 +510,7 @@ export default function Home() {
               </div>
             )}
             <form onSubmit={handleChangePassword} className="flex flex-col gap-4">
-              <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">Password Lama</label>
-                <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required placeholder="Password saat ini" className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm font-medium transition-all" />
-              </div>
+
               <div>
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">Password Baru</label>
                 <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required placeholder="Minimal 6 karakter" className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-100 text-gray-700 text-sm font-medium transition-all" />
