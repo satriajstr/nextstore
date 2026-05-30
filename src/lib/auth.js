@@ -20,6 +20,9 @@ export async function getRole() {
 }
 
 export async function signOut() {
+  try {
+    localStorage.removeItem('nextstore_theme')
+  } catch (e) {}
   await supabase.auth.signOut()
   window.location.href = '/login'
 }

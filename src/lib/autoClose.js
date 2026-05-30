@@ -129,46 +129,55 @@ export async function autoClosePastDays(supabase, storeId) {
         }
       }
 
-      const shouldWriteRecapValues = trxForDate.length > 0
+      const totalTrxCount = carryTrxCount + trxForDate.length
 
-      const totalPenjualan = shouldWriteRecapValues ? (carryPenjualan + totalHariIniFresh) : (existing?.total_penjualan ?? carryPenjualan)
-      const totalModal = shouldWriteRecapValues ? (carryModal + modalSesi) : (existing?.total_modal ?? carryModal)
-      const totalDiskon = shouldWriteRecapValues ? (carryDiskon + diskonSesi) : (existing?.total_diskon ?? carryDiskon)
-      const keuntunganBersih = totalPenjualan - totalModal
-      const jumlahTrx = shouldWriteRecapValues ? (carryTrxCount + trxForDate.length) : (existing?.jumlah_transaksi ?? carryTrxCount)
+      if (totalTrxCount > 0) {
+        const totalPenjualan = carryPenjualan + totalHariIniFresh
+        const totalModal = carryModal + modalSesi
+        const totalDiskon = carryDiskon + diskonSesi
+        const keuntunganBersih = totalPenjualan - totalModal
 
-      const upsertPayload = {
-        date: dateStr,
-        store_id: storeId,
-        status: 'closed',
-        carry_over: carryPenjualan,
-        carry_modal: carryModal,
-        carry_diskon: carryDiskon,
-        carry_trx_count: carryTrxCount,
-        total_penjualan: totalPenjualan,
-        total_modal: totalModal,
-        total_diskon: totalDiskon,
-        keuntungan_bersih: keuntunganBersih,
-        jumlah_transaksi: jumlahTrx
-      }
+        const upsertPayload = {
+          date: dateStr,
+          store_id: storeId,
+          status: 'closed',
+          carry_over: carryPenjualan,
+          carry_modal: carryModal,
+          carry_diskon: carryDiskon,
+          carry_trx_count: carryTrxCount,
+          total_penjualan: totalPenjualan,
+          total_modal: totalModal,
+          total_diskon: totalDiskon,
+          keuntungan_bersih: keuntunganBersih,
+          jumlah_transaksi: totalTrxCount
+        }
 
-      const { error: upsertErr } = await supabase
-        .from('daily_summary')
-        .upsert(upsertPayload, { onConflict: 'date, store_id' })
+        const { error: upsertErr } = await supabase
+          .from('daily_summary')
+          .upsert(upsertPayload, { onConflict: 'date, store_id' })
 
-      if (upsertErr) {
-        console.error(`Gagal melakukan auto-close untuk tanggal ${dateStr}:`, upsertErr)
-        continue
-      }
+        if (upsertErr) {
+          console.error(`Gagal melakukan auto-close untuk tanggal ${dateStr}:`, upsertErr)
+          continue
+        }
 
-      // Hanya masukkan ke array notifikasi jika ada transaksi untuk menghindari list kosong bernilai 0
-      if (jumlahTrx > 0) {
         closedReports.push({
           date: dateStr,
           totalPenjualan,
           keuntunganBersih,
-          jumlahTrx
+          jumlahTrx: totalTrxCount
         })
+      } else {
+        // Jika tidak ada transaksi sama sekali, hapus record daily_summary yang ada untuk tanggal tersebut (jika ada yang berstatus 'open') agar tidak disimpan di grafik
+        const { error: deleteErr } = await supabase
+          .from('daily_summary')
+          .delete()
+          .eq('store_id', storeId)
+          .eq('date', dateStr)
+
+        if (deleteErr) {
+          console.error(`Gagal menghapus rekap kosong untuk tanggal ${dateStr}:`, deleteErr)
+        }
       }
     }
 

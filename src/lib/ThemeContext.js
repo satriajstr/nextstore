@@ -7,7 +7,7 @@ const ThemeContext = createContext({})
 
 export const THEME_DEFAULTS = {
   storeName: 'NextStore',
-  primaryColor: '#ec4899', // pink-500
+  primaryColor: '#6366f1', // Indigo-500 (System Theme)
 }
 
 // Converts hex color to "r, g, b" string for rgba() usage
@@ -42,6 +42,9 @@ export function ThemeProvider({ children }) {
         const parsed = JSON.parse(saved)
         if (parsed.storeName) setStoreName(parsed.storeName)
         if (parsed.primaryColor) setPrimaryColor(parsed.primaryColor)
+      } else {
+        // Default to system indigo theme for guest pages
+        setPrimaryColor('#6366f1')
       }
     } catch (e) {}
 
@@ -49,19 +52,12 @@ export function ThemeProvider({ children }) {
       // 1. Get current session
       const { data: { session } } = await supabase.auth.getSession()
 
-      // 2. If NOT logged in, use Local Storage or Defaults
+      // 2. If NOT logged in, use Defaults (login system theme) and clear localStorage
       if (!session) {
+        setStoreName(THEME_DEFAULTS.storeName)
+        setPrimaryColor('#6366f1') // Indigo-500 (System Login Theme)
         try {
-          const saved = localStorage.getItem('nextstore_theme')
-          if (saved) {
-            const parsed = JSON.parse(saved)
-            if (parsed.storeName) setStoreName(parsed.storeName)
-            if (parsed.primaryColor) setPrimaryColor(parsed.primaryColor)
-          } else {
-            // Reset to defaults if no session and no saved theme
-            setStoreName(THEME_DEFAULTS.storeName)
-            setPrimaryColor(THEME_DEFAULTS.primaryColor)
-          }
+          localStorage.removeItem('nextstore_theme')
         } catch (e) { /* ignore */ }
         setLoaded(true)
         return

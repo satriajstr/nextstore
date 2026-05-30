@@ -161,6 +161,7 @@ export default function Dashboard() {
   const [isClosed, setIsClosed] = useState(false)
   const [closing, setClosing] = useState(false)
   const [toast, setToast] = useState(null)
+  const [loadingData, setLoadingData] = useState(true)
   const [hasOperatingHours, setHasOperatingHours] = useState(false)
   const [operatingHours, setOperatingHours] = useState({ open: '', close: '' })
 
@@ -255,9 +256,42 @@ export default function Dashboard() {
     }
   }, [profile?.store_id])
 
+  // ─── History Chart Data ───────────────────────────────────────────────────
+  const [historyChart, setHistoryChart] = useState([])
+
+  const fetchHistory = useCallback(async () => {
+    if (!profile?.store_id) return
+    const { data } = await supabase
+      .from('daily_summary')
+      .select('date, total_penjualan, keuntungan_bersih')
+      .eq('store_id', profile.store_id)
+      .gt('jumlah_transaksi', 0)
+      .order('date', { ascending: false })
+      .limit(7)
+    if (data) setHistoryChart(data.reverse())
+  }, [profile?.store_id])
+
+  // ─── Stok Kritis ──────────────────────────────────────────────────────────
+  const [criticalStock, setCriticalStock] = useState([])
+
+  const fetchCritical = useCallback(async () => {
+    if (!profile?.store_id) return
+    const savedThreshold = typeof window !== 'undefined'
+      ? parseInt(localStorage.getItem('critical_stock_threshold')) || 3
+      : 3
+    const { data } = await supabase
+      .from('products')
+      .select('id, name, stock, category')
+      .eq('store_id', profile.store_id)
+      .lte('stock', savedThreshold)
+      .order('stock', { ascending: true })
+    if (data) setCriticalStock(data)
+  }, [profile?.store_id])
+
   useEffect(() => {
     const initDashboard = async () => {
       if (profile?.store_id) {
+        setLoadingData(true)
         if (!hasCheckedAutoClose) {
           setHasCheckedAutoClose(true)
           try {
@@ -270,11 +304,16 @@ export default function Dashboard() {
             console.error("Auto close error in dashboard:", err)
           }
         }
-        fetchDashboardData()
+        await Promise.all([
+          fetchDashboardData(),
+          fetchHistory(),
+          fetchCritical()
+        ])
+        setLoadingData(false)
       }
     }
     initDashboard()
-  }, [profile?.store_id, hasCheckedAutoClose, fetchDashboardData])
+  }, [profile?.store_id, hasCheckedAutoClose, fetchDashboardData, fetchHistory, fetchCritical])
 
   const handleCloseDay = async () => {
     if (isClosed) return
@@ -426,42 +465,6 @@ export default function Dashboard() {
   const totalQRIS = transactions.filter(t => t.payment_method === 'QRIS').reduce((acc, t) => acc + (t.total_harga || 0), 0)
   const totalCash = transactions.filter(t => t.payment_method === 'Tunai').reduce((acc, t) => acc + (t.total_harga || 0), 0)
 
-  // ─── History Chart Data ───────────────────────────────────────────────────
-  const [historyChart, setHistoryChart] = useState([])
-
-  useEffect(() => {
-    const fetchHistory = async () => {
-      if (!profile?.store_id) return
-      const { data } = await supabase
-        .from('daily_summary')
-        .select('date, total_penjualan, keuntungan_bersih')
-        .eq('store_id', profile.store_id)
-        .order('date', { ascending: false })
-        .limit(7)
-      if (data) setHistoryChart(data.reverse())
-    }
-    if (profile?.store_id) fetchHistory()
-  }, [profile?.store_id])
-
-  // ─── Stok Kritis ──────────────────────────────────────────────────────────
-  const [criticalStock, setCriticalStock] = useState([])
-
-  useEffect(() => {
-    const fetchCritical = async () => {
-      if (!profile?.store_id) return
-      const savedThreshold = typeof window !== 'undefined'
-        ? parseInt(localStorage.getItem('critical_stock_threshold')) || 3
-        : 3
-      const { data } = await supabase
-        .from('products')
-        .select('id, name, stock, category')
-        .eq('store_id', profile.store_id)
-        .lte('stock', savedThreshold)
-        .order('stock', { ascending: true })
-      if (data) setCriticalStock(data)
-    }
-    if (profile?.store_id) fetchCritical()
-  }, [profile?.store_id])
 
   if (checkingAuth) {
     return (
@@ -495,142 +498,141 @@ export default function Dashboard() {
             {/* CARD TOTAL PENJUALAN + AI ASSISTANT */}
             <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 mb-8">
 
-              {/* EXACT CARD FROM LAPORAN PAGE */}
-              <section
-                className="border-2 shadow-md shadow-slate-100/50 hover:shadow-lg hover:-translate-y-1 rounded-[2rem] p-8 flex flex-col md:flex-row justify-between items-center gap-6 transition-all duration-300"
-                style={{
-                  borderColor: isClosed ? 'rgba(148, 163, 184, 0.35)' : `${primaryColor}30`,
-                  background: isClosed
-                    ? 'linear-gradient(135deg, rgba(148,163,184,0.18) 0%, rgba(148,163,184,0.08) 60%, #ffffff 100%)'
-                    : `linear-gradient(135deg, ${primaryColor}25 0%, ${primaryColor}10 60%, #ffffff 100%)`
-                }}
-              >
-                <div className="text-left w-full md:w-auto">
-                  <div className="flex items-center gap-2 mb-2">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      {isClosed ? 'Rekap Penjualan (HARI DITUTUP)' : 'Total Penjualan Hari Ini'}
-                    </p>
-                    {isClosed && <span className="bg-emerald-500 text-white text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest">Locked</span>}
-                  </div>
-                  <h2 className="text-3xl md:text-4xl font-black tracking-tight" style={{ color: isClosed ? '#64748b' : primaryColor }}>
-                    {formatIDR(totalHariIni)}
-                  </h2>
-                  <div className="flex gap-4 mt-4">
-                    <div className="flex flex-col">
-                      <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider flex items-center gap-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5h16.5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H3.75A1.5 1.5 0 0 1 2.25 18V6a1.5 1.5 0 0 1 1.5-1.5zm10.5 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
-                        </svg>
-                        Tunai
-                      </span>
-                      <span className="text-base font-bold text-emerald-600">{formatIDR(totalCash)}</span>
+              {loadingData ? (
+                /* ── SKELETON: Total Penjualan Card ── */
+                <section className="border-2 shadow-md shadow-slate-100/50 rounded-[2rem] p-8 flex flex-col md:flex-row justify-between items-center gap-6" style={{ borderColor: `${primaryColor}20`, background: `linear-gradient(135deg, ${primaryColor}12 0%, ${primaryColor}06 60%, #ffffff 100%)` }}>
+                  <div className="w-full md:w-auto">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="h-3 w-48 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}20` }}></div>
                     </div>
-                    <div className="w-[1px] h-8 bg-slate-200/80 self-center"></div>
-                    <div className="flex flex-col">
-                      <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider flex items-center gap-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75h4.5v4.5h-4.5zM15.75 3.75h4.5v4.5h-4.5zM3.75 15.75h4.5v4.5h-4.5zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z" />
-                        </svg>
-                        QRIS / Non-Tunai
-                      </span>
-                      <span className="text-base font-bold text-red-600">{formatIDR(totalQRIS)}</span>
+                    <div className="h-9 w-56 rounded-2xl animate-pulse mb-4" style={{ backgroundColor: `${primaryColor}22` }}></div>
+                    <div className="flex gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <div className="h-2.5 w-12 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}18` }}></div>
+                        <div className="h-5 w-24 rounded-lg animate-pulse" style={{ backgroundColor: `${primaryColor}20` }}></div>
+                      </div>
+                      <div className="w-[1px] h-8 self-center" style={{ backgroundColor: `${primaryColor}15` }}></div>
+                      <div className="flex flex-col gap-1.5">
+                        <div className="h-2.5 w-20 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}18` }}></div>
+                        <div className="h-5 w-24 rounded-lg animate-pulse" style={{ backgroundColor: `${primaryColor}20` }}></div>
+                      </div>
                     </div>
                   </div>
-                </div>
-
-                <div className="flex items-center gap-3 md:ml-auto shrink-0">
-                  <div className="text-right">
-                    <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Transaksi</p>
-                    <p className="text-xl font-black text-slate-800">{transactions.length}</p>
+                  <div className="flex items-center gap-3 md:ml-auto shrink-0">
+                    <div className="flex flex-col items-end gap-1.5">
+                      <div className="h-2.5 w-14 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}18` }}></div>
+                      <div className="h-6 w-8 rounded-lg animate-pulse" style={{ backgroundColor: `${primaryColor}20` }}></div>
+                    </div>
+                    <div className="w-px h-8" style={{ backgroundColor: `${primaryColor}15` }}></div>
+                    <div className="h-10 w-20 rounded-xl animate-pulse" style={{ backgroundColor: `${primaryColor}22` }}></div>
                   </div>
-
-                  <div className="w-px h-8 bg-slate-200/80" />
-
-                  {!isClosed ? (
-                    <button
-                      onClick={handleCloseDay}
-                      disabled={closing}
-                      className="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg transition-all active:scale-95 disabled:opacity-50 text-xs uppercase tracking-wider whitespace-nowrap"
-                    >
-                      {closing ? '...' : 'Tutup'}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleOpenDay}
-                      className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg hover:bg-emerald-700 transition-all active:scale-95 text-xs uppercase tracking-wider whitespace-nowrap"
-                    >
-                      Buka
-                    </button>
-                  )}
-                </div>
-              </section>
-
-              {/* AI ASSISTANT CARD */}
-              <section
-                onClick={() => router.push('/owner/assistant-ai')}
-                className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-6 w-full md:w-[200px] shrink-0 flex flex-col justify-between cursor-pointer transition-all duration-300"
-                style={{ outline: '2px solid transparent' }}
-                onMouseEnter={e => e.currentTarget.style.outline = `2px solid ${primaryColor}40`}
-                onMouseLeave={e => e.currentTarget.style.outline = '2px solid transparent'}
-              >
-                <div>
-                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: `${primaryColor}15` }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
-                    </svg>
-                  </div>
-                  <p className="text-xs font-bold text-slate-800 leading-snug">Assistant AI</p>
-                  <p className="text-[10px] text-slate-400 font-medium mt-1 leading-relaxed">Analisis bisnis & rekomendasi cerdas untuk toko Anda.</p>
-                </div>
-                <div className="mt-4 pt-3 border-t border-slate-50 flex justify-end">
-                  <span className="text-[9px] font-bold text-slate-400 group-hover:text-slate-600 transition-colors flex items-center gap-1">
-                    Buka Asisten
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-2.5 h-2.5 transform group-hover:translate-x-0.5 transition-transform">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                    </svg>
-                  </span>
-                </div>
-              </section>
-
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_200px_200px] gap-4 mb-8">
-
-              {/* Rekap Harian Chart */}
-              {historyChart.length > 1 && (
+                </section>
+              ) : (
+                /* ── REAL: Total Penjualan Card ── */
                 <section
-                  onClick={() => router.push('/laporan?tab=riwayat&grafik=1&days=7')}
-                  className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-6 transition-all cursor-pointer duration-300"
+                  className="border-2 shadow-md shadow-slate-100/50 hover:shadow-lg hover:-translate-y-1 rounded-[2rem] p-8 flex flex-col md:flex-row justify-between items-center gap-6 transition-all duration-300"
+                  style={{
+                    borderColor: isClosed ? 'rgba(148, 163, 184, 0.35)' : `${primaryColor}30`,
+                    background: isClosed
+                      ? 'linear-gradient(135deg, rgba(148,163,184,0.18) 0%, rgba(148,163,184,0.08) 60%, #ffffff 100%)'
+                      : `linear-gradient(135deg, ${primaryColor}25 0%, ${primaryColor}10 60%, #ffffff 100%)`
+                  }}
+                >
+                  <div className="text-left w-full md:w-auto">
+                    <div className="flex items-center gap-2 mb-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        {isClosed ? 'Rekap Penjualan (HARI DITUTUP)' : 'Total Penjualan Hari Ini'}
+                      </p>
+                      {isClosed && <span className="bg-emerald-500 text-white text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest">Locked</span>}
+                    </div>
+                    <h2 className="text-3xl md:text-4xl font-black tracking-tight" style={{ color: isClosed ? '#64748b' : primaryColor }}>
+                      {formatIDR(totalHariIni)}
+                    </h2>
+                    <div className="flex gap-4 mt-4">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider flex items-center gap-1">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5h16.5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H3.75A1.5 1.5 0 0 1 2.25 18V6a1.5 1.5 0 0 1 1.5-1.5zm10.5 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
+                          </svg>
+                          Tunai
+                        </span>
+                        <span className="text-base font-bold text-emerald-600">{formatIDR(totalCash)}</span>
+                      </div>
+                      <div className="w-[1px] h-8 bg-slate-200/80 self-center"></div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider flex items-center gap-1">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75h4.5v4.5h-4.5zM15.75 3.75h4.5v4.5h-4.5zM3.75 15.75h4.5v4.5h-4.5zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z" />
+                          </svg>
+                          QRIS / Non-Tunai
+                        </span>
+                        <span className="text-base font-bold text-red-600">{formatIDR(totalQRIS)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 md:ml-auto shrink-0">
+                    <div className="text-right">
+                      <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Transaksi</p>
+                      <p className="text-xl font-black text-slate-800">{transactions.length}</p>
+                    </div>
+
+                    <div className="w-px h-8 bg-slate-200/80" />
+
+                    {!isClosed ? (
+                      <button
+                        onClick={handleCloseDay}
+                        disabled={closing}
+                        className="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg transition-all active:scale-95 disabled:opacity-50 text-xs uppercase tracking-wider whitespace-nowrap"
+                      >
+                        {closing ? '...' : 'Tutup'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleOpenDay}
+                        className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg hover:bg-emerald-700 transition-all active:scale-95 text-xs uppercase tracking-wider whitespace-nowrap"
+                      >
+                        Buka
+                      </button>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              {loadingData ? (
+                /* ── SKELETON: AI Assistant Card ── */
+                <section className="bg-white shadow-sm rounded-[2rem] p-6 w-full md:w-[200px] shrink-0 flex flex-col justify-between" style={{ border: `1px solid ${primaryColor}15` }}>
+                  <div>
+                    <div className="w-10 h-10 rounded-2xl animate-pulse mb-4" style={{ backgroundColor: `${primaryColor}18` }}></div>
+                    <div className="h-3.5 w-24 rounded-full animate-pulse mb-2" style={{ backgroundColor: `${primaryColor}20` }}></div>
+                    <div className="h-2.5 w-full rounded-full animate-pulse mb-1" style={{ backgroundColor: `${primaryColor}10` }}></div>
+                    <div className="h-2.5 w-3/4 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+                  </div>
+                  <div className="mt-4 pt-3 flex justify-end" style={{ borderTop: `1px solid ${primaryColor}08` }}>
+                    <div className="h-2.5 w-20 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}18` }}></div>
+                  </div>
+                </section>
+              ) : (
+                /* ── REAL: AI Assistant Card ── */
+                <section
+                  onClick={() => router.push('/owner/assistant-ai')}
+                  className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-6 w-full md:w-[200px] shrink-0 flex flex-col justify-between cursor-pointer transition-all duration-300"
                   style={{ outline: '2px solid transparent' }}
                   onMouseEnter={e => e.currentTarget.style.outline = `2px solid ${primaryColor}40`}
                   onMouseLeave={e => e.currentTarget.style.outline = '2px solid transparent'}
                 >
-                  <div className="flex justify-between items-center mb-4">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${primaryColor}10` }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4" style={{ color: primaryColor }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" />
-                        </svg>
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-slate-800">Riwayat Penjualan</p>
-                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">7 hari terakhir</p>
-                      </div>
+                  <div>
+                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: `${primaryColor}15` }}>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                      </svg>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-5 h-[2px] rounded" style={{ backgroundColor: primaryColor }} />
-                        <span className="text-[9px] text-slate-400 font-semibold">Penjualan</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-5 h-[2px] rounded border-t-2 border-dashed" style={{ borderColor: primaryColor, opacity: 0.45 }} />
-                        <span className="text-[9px] text-slate-400 font-semibold">Keuntungan</span>
-                      </div>
-                    </div>
+                    <p className="text-xs font-bold text-slate-800 leading-snug">Assistant AI</p>
+                    <p className="text-[10px] text-slate-400 font-medium mt-1 leading-relaxed">Analisis bisnis & rekomendasi cerdas untuk toko Anda.</p>
                   </div>
-                  <SalesLineChart data={historyChart} primaryColor={primaryColor} formatIDR={formatIDR} />
                   <div className="mt-4 pt-3 border-t border-slate-50 flex justify-end">
                     <span className="text-[9px] font-bold text-slate-400 group-hover:text-slate-600 transition-colors flex items-center gap-1">
-                      Lihat detail riwayat
+                      Buka Asisten
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-2.5 h-2.5 transform group-hover:translate-x-0.5 transition-transform">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
                       </svg>
@@ -639,97 +641,225 @@ export default function Dashboard() {
                 </section>
               )}
 
-              {/* Transaksi Hari Ini */}
-              <section
-                onClick={() => router.push('/laporan')}
-                className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-5 flex flex-col cursor-pointer transition-all duration-300"
-                style={{ outline: '2px solid transparent' }}
-                onMouseEnter={e => e.currentTarget.style.outline = `2px solid ${primaryColor}40`}
-                onMouseLeave={e => e.currentTarget.style.outline = '2px solid transparent'}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs font-bold text-slate-800">Transaksi Hari Ini</p>
-                  <span className="text-[9px] font-semibold text-slate-400">{transactions.length} trx</span>
-                </div>
-                {transactions.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center gap-2 py-4 text-slate-300">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
-                    </svg>
-                    <p className="text-[10px] font-semibold text-slate-400 text-center">Belum ada transaksi hari ini.</p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col divide-y divide-slate-100">
-                    {transactions.slice(0, 3).map((trx) => {
-                      const timeStr = new Date(trx.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })
-                      return (
-                        <div key={trx.id} className="flex items-center justify-between py-2.5 gap-2">
-                          <div className="min-w-0">
-                            <p className="text-[11px] font-bold text-slate-700 truncate">#{trx.id.slice(0, 8)}</p>
-                            <p className="text-[9px] text-slate-400">{timeStr}</p>
-                          </div>
-                          <div className="flex flex-col items-end shrink-0 gap-0.5">
-                            <span className="text-[10px] font-black" style={{ color: primaryColor }}>{formatIDR(trx.total_harga)}</span>
-                            <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${trx.payment_method === 'Tunai' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'
-                              }`}>{trx.payment_method || 'Tunai'}</span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-                <div className="mt-auto pt-3 border-t border-slate-50 flex justify-end">
-                  <span className="text-[9px] font-bold text-slate-400 group-hover:text-slate-600 transition-colors flex items-center gap-1">
-                    Lihat detail transaksi
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-2.5 h-2.5 transform group-hover:translate-x-0.5 transition-transform">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                    </svg>
-                  </span>
-                </div>
-              </section>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_200px_200px] gap-4 mb-8">
 
-              {/* Stok Kritis */}
-              {criticalStock.length > 0 && (
+              {loadingData ? (
+                /* ── SKELETON: Chart Card ── */
+                <section className="bg-white shadow-sm rounded-[2rem] p-6" style={{ border: `1px solid ${primaryColor}15` }}>
+                  <div className="flex justify-between items-center mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg animate-pulse" style={{ backgroundColor: `${primaryColor}18` }}></div>
+                      <div>
+                        <div className="h-3.5 w-32 rounded-full animate-pulse mb-1.5" style={{ backgroundColor: `${primaryColor}20` }}></div>
+                        <div className="h-2.5 w-20 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="h-2 w-16 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+                      <div className="h-2 w-16 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+                    </div>
+                  </div>
+                  <div className="flex items-end gap-2 h-[140px] pt-4">
+                    {[65, 40, 80, 55, 70, 45, 90].map((h, i) => (
+                      <div key={i} className="flex-1 flex flex-col justify-end gap-1">
+                        <div className="rounded-t-lg animate-pulse" style={{ height: `${h}%`, backgroundColor: `${primaryColor}20` }}></div>
+                        <div className="h-2 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 pt-3 flex justify-end" style={{ borderTop: `1px solid ${primaryColor}08` }}>
+                    <div className="h-2.5 w-28 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}18` }}></div>
+                  </div>
+                </section>
+              ) : (
+                /* ── REAL: Rekap Harian Chart ── */
+                historyChart.length > 1 && (
+                  <section
+                    onClick={() => router.push('/laporan?tab=riwayat&grafik=1&days=7')}
+                    className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-6 transition-all cursor-pointer duration-300"
+                    style={{ outline: '2px solid transparent' }}
+                    onMouseEnter={e => e.currentTarget.style.outline = `2px solid ${primaryColor}40`}
+                    onMouseLeave={e => e.currentTarget.style.outline = '2px solid transparent'}
+                  >
+                    <div className="flex justify-between items-center mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${primaryColor}10` }}>
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4" style={{ color: primaryColor }}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">Riwayat Penjualan</p>
+                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">7 hari terakhir</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-5 h-[2px] rounded" style={{ backgroundColor: primaryColor }} />
+                          <span className="text-[9px] text-slate-400 font-semibold">Penjualan</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-5 h-[2px] rounded border-t-2 border-dashed" style={{ borderColor: primaryColor, opacity: 0.45 }} />
+                          <span className="text-[9px] text-slate-400 font-semibold">Keuntungan</span>
+                        </div>
+                      </div>
+                    </div>
+                    <SalesLineChart data={historyChart} primaryColor={primaryColor} formatIDR={formatIDR} />
+                    <div className="mt-4 pt-3 border-t border-slate-50 flex justify-end">
+                      <span className="text-[9px] font-bold text-slate-400 group-hover:text-slate-600 transition-colors flex items-center gap-1">
+                        Lihat detail riwayat
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-2.5 h-2.5 transform group-hover:translate-x-0.5 transition-transform">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                        </svg>
+                      </span>
+                    </div>
+                  </section>
+                )
+              )}
+
+              {loadingData ? (
+                /* ── SKELETON: Transaksi Hari Ini ── */
+                <section className="bg-white shadow-sm rounded-[2rem] p-5 flex flex-col" style={{ border: `1px solid ${primaryColor}15` }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="h-3.5 w-28 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}20` }}></div>
+                    <div className="h-2.5 w-10 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+                  </div>
+                  <div className="flex flex-col" style={{ borderColor: `${primaryColor}08` }}>
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="flex items-center justify-between py-2.5 gap-2" style={{ borderBottom: i < 3 ? `1px solid ${primaryColor}08` : 'none' }}>
+                        <div>
+                          <div className="h-3 w-20 rounded-full animate-pulse mb-1.5" style={{ backgroundColor: `${primaryColor}20` }}></div>
+                          <div className="h-2 w-12 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="h-2.5 w-16 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}18` }}></div>
+                          <div className="h-4 w-10 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-auto pt-3 flex justify-end" style={{ borderTop: `1px solid ${primaryColor}08` }}>
+                    <div className="h-2.5 w-28 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}18` }}></div>
+                  </div>
+                </section>
+              ) : (
+                /* ── REAL: Transaksi Hari Ini ── */
                 <section
-                  onClick={() => router.push('/produk')}
+                  onClick={() => router.push('/laporan')}
                   className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-5 flex flex-col cursor-pointer transition-all duration-300"
                   style={{ outline: '2px solid transparent' }}
                   onMouseEnter={e => e.currentTarget.style.outline = `2px solid ${primaryColor}40`}
                   onMouseLeave={e => e.currentTarget.style.outline = '2px solid transparent'}
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <div className="relative p-1.5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${primaryColor}10` }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4" style={{ color: primaryColor }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
-                        </svg>
-                        <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
-                        </span>
-                      </div>
-                      <p className="text-xs font-bold text-slate-800">Stok Kritis</p>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-bold text-slate-800">Transaksi Hari Ini</p>
+                    <span className="text-[9px] font-semibold text-slate-400">{transactions.length} trx</span>
+                  </div>
+                  {transactions.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center gap-2 py-4 text-slate-300">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                      </svg>
+                      <p className="text-[10px] font-semibold text-slate-400 text-center">Belum ada transaksi hari ini.</p>
                     </div>
-                    <span className="text-[9px] font-semibold text-slate-400">{criticalStock.length} menipis</span>
-                  </div>
-                  <div className="overflow-y-auto max-h-[160px] flex flex-col divide-y divide-slate-100 pr-1">
-                    {criticalStock.map((p) => (
-                      <div key={p.id} className="flex items-center justify-between py-2.5 gap-3">
-                        <p className="text-[11px] font-semibold text-slate-700 truncate">{p.name}</p>
-                        <span className={`text-[10px] font-bold shrink-0 ${p.stock === 0 ? 'text-rose-500' : 'text-slate-400'
-                          }`}>{p.stock === 0 ? 'Habis' : p.stock}</span>
-                      </div>
-                    ))}
-                  </div>
+                  ) : (
+                    <div className="flex flex-col divide-y divide-slate-100">
+                      {transactions.slice(0, 3).map((trx) => {
+                        const timeStr = new Date(trx.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })
+                        return (
+                          <div key={trx.id} className="flex items-center justify-between py-2.5 gap-2">
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-bold text-slate-700 truncate">#{trx.id.slice(0, 8)}</p>
+                              <p className="text-[9px] text-slate-400">{timeStr}</p>
+                            </div>
+                            <div className="flex flex-col items-end shrink-0 gap-0.5">
+                              <span className="text-[10px] font-black" style={{ color: primaryColor }}>{formatIDR(trx.total_harga)}</span>
+                              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${trx.payment_method === 'Tunai' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'
+                                }`}>{trx.payment_method || 'Tunai'}</span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                   <div className="mt-auto pt-3 border-t border-slate-50 flex justify-end">
                     <span className="text-[9px] font-bold text-slate-400 group-hover:text-slate-600 transition-colors flex items-center gap-1">
-                      Kelola stok produk
+                      Lihat detail transaksi
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-2.5 h-2.5 transform group-hover:translate-x-0.5 transition-transform">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
                       </svg>
                     </span>
                   </div>
                 </section>
+              )}
+
+              {loadingData ? (
+                /* ── SKELETON: Stok Kritis ── */
+                <section className="bg-white shadow-sm rounded-[2rem] p-5 flex flex-col" style={{ border: `1px solid ${primaryColor}15` }}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg animate-pulse" style={{ backgroundColor: `${primaryColor}18` }}></div>
+                      <div className="h-3.5 w-16 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}20` }}></div>
+                    </div>
+                    <div className="h-2.5 w-14 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+                  </div>
+                  <div className="flex flex-col">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="flex items-center justify-between py-2.5 gap-3" style={{ borderBottom: i < 3 ? `1px solid ${primaryColor}08` : 'none' }}>
+                        <div className="h-3 w-24 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}20` }}></div>
+                        <div className="h-3 w-8 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-auto pt-3 flex justify-end" style={{ borderTop: `1px solid ${primaryColor}08` }}>
+                    <div className="h-2.5 w-24 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}18` }}></div>
+                  </div>
+                </section>
+              ) : (
+                /* ── REAL: Stok Kritis ── */
+                criticalStock.length > 0 && (
+                  <section
+                    onClick={() => router.push('/produk')}
+                    className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-5 flex flex-col cursor-pointer transition-all duration-300"
+                    style={{ outline: '2px solid transparent' }}
+                    onMouseEnter={e => e.currentTarget.style.outline = `2px solid ${primaryColor}40`}
+                    onMouseLeave={e => e.currentTarget.style.outline = '2px solid transparent'}
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="relative p-1.5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${primaryColor}10` }}>
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4" style={{ color: primaryColor }}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+                          </svg>
+                          <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                          </span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-800">Stok Kritis</p>
+                      </div>
+                      <span className="text-[9px] font-semibold text-slate-400">{criticalStock.length} menipis</span>
+                    </div>
+                    <div className="overflow-y-auto max-h-[160px] flex flex-col divide-y divide-slate-100 pr-1">
+                      {criticalStock.map((p) => (
+                        <div key={p.id} className="flex items-center justify-between py-2.5 gap-3">
+                          <p className="text-[11px] font-semibold text-slate-700 truncate">{p.name}</p>
+                          <span className={`text-[10px] font-bold shrink-0 ${p.stock === 0 ? 'text-rose-500' : 'text-slate-400'
+                            }`}>{p.stock === 0 ? 'Habis' : p.stock}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-auto pt-3 border-t border-slate-50 flex justify-end">
+                      <span className="text-[9px] font-bold text-slate-400 group-hover:text-slate-600 transition-colors flex items-center gap-1">
+                        Kelola stok produk
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-2.5 h-2.5 transform group-hover:translate-x-0.5 transition-transform">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                        </svg>
+                      </span>
+                    </div>
+                  </section>
+                )
               )}
 
             </div>
