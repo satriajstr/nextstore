@@ -741,7 +741,7 @@ function LaporanContent() {
       .eq('store_id', profile.store_id)
       .eq('date', today)
       .maybeSingle()
-    setIsClosed(data?.status === 'closed')
+    setIsClosed(!data || data?.status === 'closed')
   }, [profile?.store_id])
 
   // 1. Jalankan pemeriksaan auto-close sekali saat admin masuk halaman laporan
@@ -971,9 +971,11 @@ function LaporanContent() {
     try {
       const { error: updateErr } = await supabase
         .from('daily_summary')
-        .update({ status: 'open' })
-        .eq('store_id', profile.store_id)
-        .eq('date', today)
+        .upsert({
+          date: today,
+          store_id: profile.store_id,
+          status: 'open'
+        }, { onConflict: 'date, store_id' })
 
       if (updateErr) throw updateErr
 
@@ -1157,14 +1159,11 @@ function LaporanContent() {
   }
 
   // ─── Render ──────────────────────────────────────────────────────────────
+  const isPageLoading = checkingAuth || loading
+
   return (
     <>
       <Toast toast={toast} onClose={() => setToast(null)} />
-      {checkingAuth && (
-        <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: primaryColor }}></div>
-        </div>
-      )}
       <ConfirmDialog confirm={confirmState} onYes={handleConfirmYes} onNo={handleConfirmNo} />
 
       <main className="flex min-h-screen bg-white text-slate-800 font-sans">
@@ -1176,24 +1175,16 @@ function LaporanContent() {
             <header className="flex justify-between items-center mb-8">
               <div>
                 <h1 className="text-3xl font-semibold tracking-tight" style={{ color: primaryColor }}>Laporan Penjualan</h1>
-                <p className="text-slate-400 text-xs mt-0.5">Analisis penjualan toko Anda.</p>
+                {isPageLoading ? (
+                  <div className="h-3 w-44 rounded-full animate-pulse mt-1.5" style={{ backgroundColor: `${primaryColor}15` }} />
+                ) : (
+                  <p className="text-slate-400 text-xs mt-0.5">Analisis penjualan toko Anda.</p>
+                )}
               </div>
             </header>
 
-            {/* ACTION BANNER */}
-            <section className="bg-slate-50 border border-slate-100 rounded-[2rem] p-6 mb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
-              <div>
-                <h3 className="font-extrabold text-slate-800 text-sm">Status Hari Operasional</h3>
-                <p className="text-slate-400 text-xs mt-0.5">
-                  {isClosed
-                    ? 'Hari ini telah ditutup. Kasir tidak bisa melakukan transaksi baru.'
-                    : 'Hari operasional aktif. Jangan lupa untuk menutup hari saat selesai.'}
-                </p>
-              </div>
-            </section>
-
             {/* Grafik Rekap Penjualan */}
-            {activeTab === 'riwayat' && showChart && (
+            {activeTab === 'riwayat' && (showChart || isPageLoading) && (
               <section
                 ref={chartSectionRef}
                 className="bg-white border border-slate-100 shadow-sm rounded-[2rem] p-6 mb-8 scroll-mt-24"
@@ -1243,9 +1234,33 @@ function LaporanContent() {
                   </div>
                 </div>
 
-                {loadingChart ? (
-                  <div className="py-12 flex justify-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: primaryColor }} />
+                {(isPageLoading || loadingChart) ? (
+                  <div className="pt-2 pb-1">
+                    {/* Skeleton line chart area */}
+                    <div className="relative h-[110px] flex items-end gap-[3px] px-1 overflow-hidden">
+                      {[45, 62, 38, 80, 55, 90, 70, 48, 85, 60, 75, 42, 68, 88].map((h, i) => (
+                        <div
+                          key={i}
+                          className="flex-1 rounded-t-sm animate-pulse"
+                          style={{
+                            height: `${h}%`,
+                            backgroundColor: `${primaryColor}${i % 2 === 0 ? '18' : '10'}`,
+                            animationDelay: `${i * 60}ms`
+                          }}
+                        />
+                      ))}
+                      {/* Overlay gradient to mimic line chart fade */}
+                      <div
+                        className="absolute inset-0 pointer-events-none"
+                        style={{ background: `linear-gradient(to top, ${primaryColor}08 0%, transparent 60%)` }}
+                      />
+                    </div>
+                    {/* X-axis label skeletons */}
+                    <div className="flex justify-between px-1 mt-2">
+                      {[1,2,3,4,5,6,7].map(i => (
+                        <div key={i} className="h-2 w-6 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}12` }} />
+                      ))}
+                    </div>
                   </div>
                 ) : historyChart.length < 2 ? (
                   <div className="py-10 text-center text-slate-400 text-xs font-semibold">
@@ -1355,10 +1370,40 @@ function LaporanContent() {
 
                 {/* ── Tab: Transaksi Hari Ini ── */}
                 {activeTab === 'hari-ini' && (
-                  loading ? (
-                    <div className="p-12 text-center text-slate-400">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4" style={{ borderColor: primaryColor }}></div>
-                      <span className="text-xs font-medium">Memuat data...</span>
+                  isPageLoading ? (
+                    <div className="p-6 flex flex-col gap-3">
+                      {/* Summary skeleton */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                        {[1,2,3].map(i => (
+                          <div key={i} className="rounded-2xl border border-slate-100 px-4 py-3" style={{ backgroundColor: `${primaryColor}06` }}>
+                            <div className="h-2.5 w-20 rounded-full animate-pulse mb-2" style={{ backgroundColor: `${primaryColor}15` }} />
+                            <div className="h-4 w-28 rounded-lg animate-pulse mb-1.5" style={{ backgroundColor: `${primaryColor}20` }} />
+                            <div className="h-2 w-12 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }} />
+                          </div>
+                        ))}
+                      </div>
+                      {/* Table header skeleton */}
+                      <div className="flex gap-4 px-6 py-3 border-b border-slate-100">
+                        {[60, 160, 80, 70, 60].map((w, i) => (
+                          <div key={i} className="h-2.5 rounded-full animate-pulse" style={{ width: w, backgroundColor: `${primaryColor}12` }} />
+                        ))}
+                      </div>
+                      {/* Table row skeletons */}
+                      {[1,2,3,4,5].map(i => (
+                        <div key={i} className="flex gap-4 px-6 py-4 items-center border-b border-slate-50">
+                          <div className="flex flex-col gap-1 shrink-0" style={{ width: 60 }}>
+                            <div className="h-3 w-14 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}18` }} />
+                            <div className="h-2 w-10 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }} />
+                          </div>
+                          <div className="flex-1 flex flex-col gap-1.5">
+                            <div className="h-3 rounded-full animate-pulse" style={{ width: `${50 + (i * 11) % 40}%`, backgroundColor: `${primaryColor}15` }} />
+                            <div className="h-2 rounded-full animate-pulse" style={{ width: `${30 + (i * 7) % 25}%`, backgroundColor: `${primaryColor}10` }} />
+                          </div>
+                          <div className="h-5 w-14 rounded-full animate-pulse shrink-0" style={{ backgroundColor: `${primaryColor}12` }} />
+                          <div className="h-4 w-16 rounded-lg animate-pulse shrink-0" style={{ backgroundColor: `${primaryColor}18` }} />
+                          <div className="h-6 w-14 rounded-xl animate-pulse shrink-0" style={{ backgroundColor: `${primaryColor}10` }} />
+                        </div>
+                      ))}
                     </div>
                   ) : transactions.length === 0 ? (
                     <div className="p-12 text-center text-slate-400">
@@ -1532,7 +1577,32 @@ function LaporanContent() {
 
                 {/* ── Tab: Riwayat Rekap Harian ── */}
                 {activeTab === 'riwayat' && (
-                  history.length === 0 ? (
+                  isPageLoading ? (
+                    <div className="p-6 flex flex-col gap-3">
+                      {/* Table header skeleton */}
+                      <div className="flex gap-4 px-6 py-3 border-b border-slate-100">
+                        {[120, 100, 100, 110, 80].map((w, i) => (
+                          <div key={i} className="h-2.5 rounded-full animate-pulse" style={{ width: w, backgroundColor: `${primaryColor}12` }} />
+                        ))}
+                      </div>
+                      {/* Row skeletons */}
+                      {[1,2,3,4,5].map(i => (
+                        <div key={i} className="flex gap-4 px-6 py-4 items-center border-b border-slate-50">
+                          <div className="flex-1 flex flex-col gap-1.5">
+                            <div className="h-3 w-32 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}18` }} />
+                            <div className="h-2 w-12 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }} />
+                          </div>
+                          <div className="h-3 w-20 rounded-full animate-pulse ml-auto" style={{ backgroundColor: `${primaryColor}15` }} />
+                          <div className="h-3 w-16 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }} />
+                          <div className="h-3 w-20 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}18` }} />
+                          <div className="flex gap-1.5 shrink-0">
+                            <div className="h-6 w-14 rounded-xl animate-pulse" style={{ backgroundColor: `${primaryColor}10` }} />
+                            <div className="h-6 w-12 rounded-xl animate-pulse" style={{ backgroundColor: 'rgba(239,68,68,0.08)' }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : history.length === 0 ? (
                     <div className="p-12 text-center text-slate-400">
                       <span className="text-xs font-semibold">Belum ada riwayat penutupan hari.</span>
                     </div>

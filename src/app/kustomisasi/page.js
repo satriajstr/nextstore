@@ -120,14 +120,6 @@ export default function Kustomisasi() {
     setCloseTime('17:00')
   }
 
-  if (checkingAuth) {
-    return (
-      <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500"></div>
-      </div>
-    )
-  }
-
   return (
     <main className="flex min-h-screen bg-gray-50 text-gray-900 font-sans">
       <AdminSidebar />
@@ -140,7 +132,11 @@ export default function Kustomisasi() {
             <h1 className="text-3xl font-semibold tracking-tight" style={{ color: activeColor }}>
               Pengaturan Toko
             </h1>
-            <p className="text-gray-400 text-sm mt-1">Sesuaikan tampilan, identitas, dan jam operasional toko Anda</p>
+            {checkingAuth ? (
+              <div className="h-3 w-72 rounded-full animate-pulse mt-2" style={{ backgroundColor: `${activeColor}18` }} />
+            ) : (
+              <p className="text-gray-400 text-sm mt-1">Sesuaikan tampilan, identitas, dan jam operasional toko Anda</p>
+            )}
           </header>
 
           <div className="space-y-6">
@@ -160,58 +156,64 @@ export default function Kustomisasi() {
                 </div>
               </div>
 
-              <label className="flex items-center gap-3 cursor-pointer mb-6 p-4 rounded-2xl bg-gray-50 border border-gray-100">
-                <input
-                  type="checkbox"
-                  checked={hoursEnabled}
-                  onChange={(e) => setHoursEnabled(e.target.checked)}
-                  className="w-5 h-5 rounded accent-pink-500"
-                  style={{ accentColor: activeColor }}
-                />
-                <div>
-                  <p className="font-bold text-gray-800 text-sm">Aktifkan batasan jam operasional</p>
-                  <p className="text-gray-400 text-xs mt-0.5">Nonaktif = kasir bisa akses kapan saja</p>
-                </div>
-              </label>
+              {checkingAuth ? (
+                <div className="h-14 w-full rounded-2xl animate-pulse" style={{ backgroundColor: `${activeColor}08` }} />
+              ) : (
+                <>
+                  <label className="flex items-center gap-3 cursor-pointer mb-6 p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                    <input
+                      type="checkbox"
+                      checked={hoursEnabled}
+                      onChange={(e) => setHoursEnabled(e.target.checked)}
+                      className="w-5 h-5 rounded accent-pink-500"
+                      style={{ accentColor: activeColor }}
+                    />
+                    <div>
+                      <p className="font-bold text-gray-800 text-sm">Aktifkan batasan jam operasional</p>
+                      <p className="text-gray-400 text-xs mt-0.5">Nonaktif = kasir bisa akses kapan saja</p>
+                    </div>
+                  </label>
 
-              {hoursEnabled && (
-                <div className="space-y-4 animate-fade-in">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">
-                        Jam Buka
-                      </label>
-                      <input
-                        type="time"
-                        value={openTime}
-                        onChange={(e) => setOpenTime(e.target.value)}
-                        className="w-full px-4 py-3.5 rounded-2xl border border-gray-200 bg-gray-50/50 focus:outline-none text-gray-800 font-semibold text-sm"
-                        onFocus={(e) => { e.target.style.borderColor = activeColor }}
-                        onBlur={(e) => { e.target.style.borderColor = '#e5e7eb' }}
-                      />
+                  {hoursEnabled && (
+                    <div className="space-y-4 animate-fade-in">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">
+                            Jam Buka
+                          </label>
+                          <input
+                            type="time"
+                            value={openTime}
+                            onChange={(e) => setOpenTime(e.target.value)}
+                            className="w-full px-4 py-3.5 rounded-2xl border border-gray-200 bg-gray-50/50 focus:outline-none text-gray-800 font-semibold text-sm"
+                            onFocus={(e) => { e.target.style.borderColor = activeColor }}
+                            onBlur={(e) => { e.target.style.borderColor = '#e5e7eb' }}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">
+                            Jam Tutup
+                          </label>
+                          <input
+                            type="time"
+                            value={closeTime}
+                            onChange={(e) => setCloseTime(e.target.value)}
+                            className="w-full px-4 py-3.5 rounded-2xl border border-gray-200 bg-gray-50/50 focus:outline-none text-gray-800 font-semibold text-sm"
+                            onFocus={(e) => { e.target.style.borderColor = activeColor }}
+                            onBlur={(e) => { e.target.style.borderColor = '#e5e7eb' }}
+                          />
+                        </div>
+                      </div>
+                      <div className="p-4 rounded-2xl border border-dashed text-sm"
+                        style={{ borderColor: activeColor + '40', backgroundColor: activeColor + '08', color: activeColor }}>
+                        <p className="font-semibold">Pratinjau jadwal</p>
+                        <p className="text-xs mt-1 opacity-80">
+                          Kasir dapat mengakses sistem dari <strong>{openTime}</strong> hingga <strong>{closeTime}</strong> WIB setiap hari.
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">
-                        Jam Tutup
-                      </label>
-                      <input
-                        type="time"
-                        value={closeTime}
-                        onChange={(e) => setCloseTime(e.target.value)}
-                        className="w-full px-4 py-3.5 rounded-2xl border border-gray-200 bg-gray-50/50 focus:outline-none text-gray-800 font-semibold text-sm"
-                        onFocus={(e) => { e.target.style.borderColor = activeColor }}
-                        onBlur={(e) => { e.target.style.borderColor = '#e5e7eb' }}
-                      />
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-2xl border border-dashed text-sm"
-                    style={{ borderColor: activeColor + '40', backgroundColor: activeColor + '08', color: activeColor }}>
-                    <p className="font-semibold">Pratinjau jadwal</p>
-                    <p className="text-xs mt-1 opacity-80">
-                      Kasir dapat mengakses sistem dari <strong>{openTime}</strong> hingga <strong>{closeTime}</strong> WIB setiap hari.
-                    </p>
-                  </div>
-                </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -230,24 +232,31 @@ export default function Kustomisasi() {
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">
-                  Nama Toko
-                </label>
-                <input
-                  type="text"
-                  value={storeName}
-                  onChange={e => setStoreName(e.target.value)}
-                  maxLength={30}
-                  placeholder="Nama toko baru anda..."
-                  className="w-full px-5 py-3.5 rounded-2xl border border-gray-200 bg-gray-50/50 focus:outline-none transition-all text-gray-800 font-semibold text-sm"
-                  style={{ '--tw-ring-color': activeColor + '40' }}
-                  onFocus={e => e.target.style.borderColor = activeColor}
-                  onBlur={e => e.target.style.borderColor = '#e5e7eb'}
-                />
-                <p className="text-[10px] text-gray-400 text-right">{storeName.length}/30 karakter</p>
-              </div>
-
+              {checkingAuth ? (
+                <div className="space-y-2">
+                  <div className="h-2.5 w-16 rounded-full animate-pulse mb-3" style={{ backgroundColor: `${activeColor}12` }} />
+                  <div className="h-12 w-full rounded-2xl animate-pulse" style={{ backgroundColor: `${activeColor}08` }} />
+                  <div className="h-2 w-20 rounded-full animate-pulse ml-auto" style={{ backgroundColor: `${activeColor}08` }} />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">
+                    Nama Toko
+                  </label>
+                  <input
+                    type="text"
+                    value={storeName}
+                    onChange={e => setStoreName(e.target.value)}
+                    maxLength={30}
+                    placeholder="Nama toko baru anda..."
+                    className="w-full px-5 py-3.5 rounded-2xl border border-gray-200 bg-gray-50/50 focus:outline-none transition-all text-gray-800 font-semibold text-sm"
+                    style={{ '--tw-ring-color': activeColor + '40' }}
+                    onFocus={e => e.target.style.borderColor = activeColor}
+                    onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+                  />
+                  <p className="text-[10px] text-gray-400 text-right">{storeName.length}/30 karakter</p>
+                </div>
+              )}
             </div>
 
             {/* ── Primary Color ────────────────────────────── */}
@@ -265,93 +274,129 @@ export default function Kustomisasi() {
                 </div>
               </div>
 
-              {/* Presets */}
-              <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-3">
-                  Pilih Warna
-                </label>
-                <div className="grid grid-cols-5 gap-3">
-                  {COLOR_PRESETS.map(preset => (
-                    <button
-                      key={preset.value}
-                      onClick={() => { setSelectedColor(preset.value); setCustomColor(preset.value) }}
-                      title={preset.name}
-                      className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border-2 transition-all group ${selectedColor === preset.value
-                        ? 'border-gray-800 scale-105'
-                        : 'border-transparent hover:border-gray-200'
-                        }`}
-                    >
-                      <div
-                        className="w-10 h-10 rounded-xl shadow-sm flex items-center justify-center text-lg"
-                        style={{ backgroundColor: preset.value }}
-                      >
-                        {selectedColor === preset.value && (
-                          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                          </svg>
-                        )}
+              {checkingAuth ? (
+                <div className="space-y-5">
+                  {/* Color presets skeleton */}
+                  <div>
+                    <div className="h-2.5 w-20 rounded-full animate-pulse mb-3" style={{ backgroundColor: `${activeColor}12` }} />
+                    <div className="grid grid-cols-5 gap-3">
+                      {[...Array(10)].map((_, i) => (
+                        <div key={i} className="flex flex-col items-center gap-1.5 p-2">
+                          <div className="w-10 h-10 rounded-xl animate-pulse" style={{ backgroundColor: `${activeColor}${i % 2 === 0 ? '18' : '10'}` }} />
+                          <div className="h-2 w-8 rounded-full animate-pulse" style={{ backgroundColor: `${activeColor}10` }} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Custom picker skeleton */}
+                  <div>
+                    <div className="h-2.5 w-24 rounded-full animate-pulse mb-3" style={{ backgroundColor: `${activeColor}12` }} />
+                    <div className="flex items-center gap-3">
+                      <div className="w-14 h-14 rounded-2xl animate-pulse shrink-0" style={{ backgroundColor: `${activeColor}15` }} />
+                      <div className="flex-1 h-12 rounded-xl animate-pulse" style={{ backgroundColor: `${activeColor}08` }} />
+                      <div className="w-14 h-14 rounded-2xl shrink-0" style={{ backgroundColor: activeColor, opacity: 0.3 }} />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Presets */}
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-3">
+                      Pilih Warna
+                    </label>
+                    <div className="grid grid-cols-5 gap-3">
+                      {COLOR_PRESETS.map(preset => (
+                        <button
+                          key={preset.value}
+                          onClick={() => { setSelectedColor(preset.value); setCustomColor(preset.value) }}
+                          title={preset.name}
+                          className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border-2 transition-all group ${selectedColor === preset.value
+                            ? 'border-gray-800 scale-105'
+                            : 'border-transparent hover:border-gray-200'
+                            }`}
+                        >
+                          <div
+                            className="w-10 h-10 rounded-xl shadow-sm flex items-center justify-center text-lg"
+                            style={{ backgroundColor: preset.value }}
+                          >
+                            {selectedColor === preset.value && (
+                              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                              </svg>
+                            )}
+                          </div>
+                          <span className="text-[9px] font-bold text-gray-400 text-center leading-tight">{preset.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Custom color picker */}
+                  <div className="mt-6">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-3">
+                      Warna Kustom
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <input
+                          type="color"
+                          value={customColor}
+                          onChange={e => { setCustomColor(e.target.value); setSelectedColor(e.target.value) }}
+                          className="w-14 h-14 rounded-2xl cursor-pointer border-2 border-gray-200 p-1 bg-white"
+                        />
                       </div>
-                      <span className="text-[9px] font-bold text-gray-400 text-center leading-tight">{preset.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Custom color picker */}
-              <div className="mt-6">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-3">
-                  Warna Kustom
-                </label>
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <input
-                      type="color"
-                      value={customColor}
-                      onChange={e => { setCustomColor(e.target.value); setSelectedColor(e.target.value) }}
-                      className="w-14 h-14 rounded-2xl cursor-pointer border-2 border-gray-200 p-1 bg-white"
-                    />
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={customColor}
+                          onChange={e => {
+                            const v = e.target.value
+                            setCustomColor(v)
+                            if (/^#[0-9A-Fa-f]{6}$/.test(v)) setSelectedColor(v)
+                          }}
+                          placeholder="#ec4899"
+                          className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm font-mono focus:outline-none transition-all"
+                          onFocus={e => e.target.style.borderColor = activeColor}
+                          onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+                        />
+                        <p className="text-[10px] text-gray-400 mt-1">Format: #RRGGBB</p>
+                      </div>
+                      {/* Live preview swatch */}
+                      <div className="w-14 h-14 rounded-2xl shadow-lg flex-shrink-0 transition-all"
+                        style={{ backgroundColor: activeColor }}>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <input
-                      type="text"
-                      value={customColor}
-                      onChange={e => {
-                        const v = e.target.value
-                        setCustomColor(v)
-                        if (/^#[0-9A-Fa-f]{6}$/.test(v)) setSelectedColor(v)
-                      }}
-                      placeholder="#ec4899"
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm font-mono focus:outline-none transition-all"
-                      onFocus={e => e.target.style.borderColor = activeColor}
-                      onBlur={e => e.target.style.borderColor = '#e5e7eb'}
-                    />
-                    <p className="text-[10px] text-gray-400 mt-1">Format: #RRGGBB</p>
-                  </div>
-                  {/* Live preview swatch */}
-                  <div className="w-14 h-14 rounded-2xl shadow-lg flex-shrink-0 transition-all"
-                    style={{ backgroundColor: activeColor }}>
-                  </div>
-                </div>
-              </div>
-
+                </>
+              )}
             </div>
 
             {/* ── Save Button ──────────────────────────────── */}
             <div className="flex gap-3">
-              <button
-                onClick={handleSave}
-                disabled={!storeName.trim() || loading}
-                className="flex-1 py-4 rounded-2xl text-white font-black text-sm tracking-widest uppercase transition-all active:scale-[0.98] shadow-lg disabled:opacity-50"
-                style={{ backgroundColor: activeColor, boxShadow: `0 8px 20px ${activeColor}40` }}
-              >
-                {loading ? 'Menyimpan...' : saved ? 'Tersimpan!' : 'Simpan Perubahan'}
-              </button>
-              <button
-                onClick={handleReset}
-                className="px-6 py-4 rounded-2xl bg-gray-100 text-gray-500 font-bold text-sm hover:bg-gray-200 transition-all"
-              >
-                Reset
-              </button>
+              {checkingAuth ? (
+                <>
+                  <div className="flex-1 h-14 rounded-2xl animate-pulse" style={{ backgroundColor: `${activeColor}20` }} />
+                  <div className="w-20 h-14 rounded-2xl animate-pulse bg-gray-100" />
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handleSave}
+                    disabled={!storeName.trim() || loading}
+                    className="flex-1 py-4 rounded-2xl text-white font-black text-sm tracking-widest uppercase transition-all active:scale-[0.98] shadow-lg disabled:opacity-50"
+                    style={{ backgroundColor: activeColor, boxShadow: `0 8px 20px ${activeColor}40` }}
+                  >
+                    {loading ? 'Menyimpan...' : saved ? 'Tersimpan!' : 'Simpan Perubahan'}
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    className="px-6 py-4 rounded-2xl bg-gray-100 text-gray-500 font-bold text-sm hover:bg-gray-200 transition-all"
+                  >
+                    Reset
+                  </button>
+                </>
+              )}
             </div>
 
             <p className="text-center text-[10px] text-gray-400 pb-8">
