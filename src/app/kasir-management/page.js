@@ -80,6 +80,10 @@ export default function KasirManagement() {
   const [generating, setGenerating] = useState(false)
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [toast, setToast] = useState(null)
+  const [selectedCashier, setSelectedCashier] = useState(null)
+  const [isDeactivating, setIsDeactivating] = useState(false)
+  const [deactivateReason, setDeactivateReason] = useState('')
+  const [disabling, setDisabling] = useState(false)
 
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type })
@@ -110,7 +114,7 @@ export default function KasirManagement() {
     if (!profile?.store_id) return
     const { data, error } = await supabase
       .from('profiles')
-      .select('user_id, role, store_id, status, full_name')
+      .select('user_id, role, store_id, status, full_name, disabled_reason')
       .eq('store_id', profile.store_id)
       .eq('role', 'kasir')
       .order('full_name', { ascending: true })
@@ -166,39 +170,76 @@ export default function KasirManagement() {
     showToast('Kode kasir berhasil disalin.')
   }
 
-  const handleToggleStatus = async (cashier) => {
-    const isActive = cashier.status === 'active' || cashier.status === 'approved'
-    const nextStatus = isActive ? 'disabled' : 'active'
+  const handleDeactivateInDetail = async () => {
+    if (!selectedCashier) return
+    if (!deactivateReason.trim()) {
+      showToast('Alasan nonaktif wajib diisi.', 'error')
+      return
+    }
+    setDisabling(true)
     const { error } = await supabase
       .from('profiles')
-      .update({ status: nextStatus })
-      .eq('user_id', cashier.user_id)
+      .update({ status: 'disabled', disabled_reason: deactivateReason.trim() })
+      .eq('user_id', selectedCashier.user_id)
       .eq('store_id', profile.store_id)
 
     if (error) {
-      showToast('Gagal mengubah status kasir.', 'error')
+      showToast('Gagal menonaktifkan kasir.', 'error')
+      setDisabling(false)
       return
     }
 
-    showToast(isActive ? 'Kasir berhasil dinonaktifkan.' : 'Kasir berhasil diaktifkan.')
+    showToast('Kasir berhasil dinonaktifkan.')
+    const updatedCashier = { ...selectedCashier, status: 'disabled', disabled_reason: deactivateReason.trim() }
+    setSelectedCashier(updatedCashier)
+    setIsDeactivating(false)
+    setDeactivateReason('')
+    setDisabling(false)
     fetchCashiers()
   }
 
-  const handleDeleteCashier = async (cashier) => {
-    const confirmed = window.confirm(`Hapus kasir "${cashier.full_name || 'Tanpa Nama'}" dari toko ini? Akun login kasir juga akan dihapus.`)
+  const handleActivateInDetail = async () => {
+    if (!selectedCashier) return
+    setDisabling(true)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ status: 'active', disabled_reason: null })
+      .eq('user_id', selectedCashier.user_id)
+      .eq('store_id', profile.store_id)
+
+    if (error) {
+      showToast('Gagal mengaktifkan kasir.', 'error')
+      setDisabling(false)
+      return
+    }
+
+    showToast('Kasir berhasil diaktifkan.')
+    const updatedCashier = { ...selectedCashier, status: 'active', disabled_reason: null }
+    setSelectedCashier(updatedCashier)
+    setDisabling(false)
+    fetchCashiers()
+  }
+
+  const handleDeleteInDetail = async () => {
+    if (!selectedCashier) return
+    const confirmed = window.confirm(`Hapus kasir "${selectedCashier.full_name || 'Tanpa Nama'}" dari toko ini? Akun login kasir juga akan dihapus.`)
     if (!confirmed) return
 
+    setDisabling(true)
     try {
       const headers = await getAuthHeaders()
-      await fetchJson(`/api/cashiers/${cashier.user_id}`, {
+      await fetchJson(`/api/cashiers/${selectedCashier.user_id}`, {
         method: 'DELETE',
         headers,
       })
       showToast('Kasir berhasil dihapus dari toko.')
+      setSelectedCashier(null)
       await refreshData()
     } catch (error) {
       console.error(error)
       showToast(error.message || 'Gagal menghapus kasir.', 'error')
+    } finally {
+      setDisabling(false)
     }
   }
 
@@ -240,7 +281,7 @@ export default function KasirManagement() {
               <div className="space-y-6">
                 <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-sm font-black text-slate-800">Kode Aktif</h2>
+                    <h2 className="text-base font-bold text-slate-800 tracking-tight">Kode Aktif</h2>
                     {checkingAuth || loading ? (
                       <div className="h-3 w-12 rounded-full animate-pulse bg-slate-100" />
                     ) : (
@@ -282,7 +323,7 @@ export default function KasirManagement() {
 
                 <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-sm font-black text-slate-800">Kode Terpakai</h2>
+                    <h2 className="text-base font-bold text-slate-800 tracking-tight">Kode Terpakai</h2>
                     {checkingAuth || loading ? (
                       <div className="h-3 w-12 rounded-full animate-pulse bg-slate-100" />
                     ) : (
@@ -315,7 +356,7 @@ export default function KasirManagement() {
 
               <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
                 <div className="p-6 border-b border-slate-100">
-                  <h2 className="text-sm font-black text-slate-800">Kasir Terdaftar</h2>
+                  <h2 className="text-base font-bold text-slate-800 tracking-tight">Kasir Terdaftar</h2>
                 </div>
                 <div className="overflow-x-auto">
                   {checkingAuth || loading ? (
@@ -344,14 +385,22 @@ export default function KasirManagement() {
                         <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
                           <th className="px-6 py-4">Nama</th>
                           <th className="px-6 py-4">Status</th>
-                          <th className="px-6 py-4 text-right">Aksi</th>
+                          <th className="px-6 py-4 text-right">Detail</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100/50">
                         {cashiers.map((cashier) => {
                           const active = cashier.status === 'active' || cashier.status === 'approved'
                           return (
-                            <tr key={cashier.user_id} className="hover:bg-slate-50/50 transition-colors">
+                            <tr 
+                              key={cashier.user_id} 
+                              onClick={() => {
+                                setSelectedCashier(cashier)
+                                setIsDeactivating(false)
+                                setDeactivateReason('')
+                              }}
+                              className="hover:bg-slate-50/80 cursor-pointer transition-colors"
+                            >
                               <td className="px-6 py-4">
                                 <p className="text-xs font-bold text-slate-700">{cashier.full_name || 'Tanpa Nama'}</p>
                                 <p className="text-[9px] font-mono text-slate-400 mt-0.5">#{cashier.user_id.slice(0, 8)}</p>
@@ -368,24 +417,11 @@ export default function KasirManagement() {
                                 </span>
                               </td>
                               <td className="px-6 py-4 text-right">
-                                <div className="flex justify-end gap-2 flex-wrap">
-                                  <button
-                                    onClick={() => handleToggleStatus(cashier)}
-                                    className={`px-3 py-1.5 text-[9px] font-bold rounded-xl transition-all active:scale-95 ${
-                                      active
-                                        ? 'bg-orange-50 text-orange-600 hover:bg-orange-100'
-                                        : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
-                                    }`}
-                                  >
-                                    {active ? 'NONAKTIFKAN' : 'AKTIFKAN'}
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteCashier(cashier)}
-                                    className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 text-[9px] font-bold rounded-xl transition-all active:scale-95"
-                                  >
-                                    HAPUS
-                                  </button>
-                                </div>
+                                <span className="text-slate-300 hover:text-slate-500 transition-colors inline-block align-middle">
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                  </svg>
+                                </span>
                               </td>
                             </tr>
                           )
@@ -399,6 +435,157 @@ export default function KasirManagement() {
           </div>
         </div>
       </main>
+
+      {/* Detail Kasir Overlay */}
+      {selectedCashier && (
+        <div 
+          className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" 
+          onClick={() => !disabling && setSelectedCashier(null)}
+        >
+          <div 
+            className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-8 relative overflow-hidden" 
+            onClick={e => e.stopPropagation()} 
+            style={{ animation: 'fadeSlideIn 0.25s ease-out' }}
+          >
+            {/* Close Button */}
+            <button 
+              onClick={() => !disabling && setSelectedCashier(null)}
+              className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 transition-colors p-1"
+              disabled={disabling}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Avatar & Header */}
+            <div className="flex flex-col items-center mb-6">
+              <div 
+                className="w-16 h-16 rounded-[1.25rem] flex items-center justify-center text-xl font-black uppercase text-white mb-3 shadow-md"
+                style={{ 
+                  backgroundColor: primaryColor,
+                  boxShadow: `0 8px 20px ${primaryColor}25`
+                }}
+              >
+                {selectedCashier.full_name ? selectedCashier.full_name.charAt(0) : 'K'}
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 text-center tracking-tight leading-snug">
+                {selectedCashier.full_name || 'Tanpa Nama'}
+              </h3>
+              <p className="text-[10px] font-mono text-slate-400 mt-1 uppercase tracking-wider">
+                ID: {selectedCashier.user_id}
+              </p>
+            </div>
+
+            {/* Details Card */}
+            <div className="space-y-4 mb-6">
+              {/* Status Row */}
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+                <span className="text-xs font-semibold text-slate-500">Status Akun</span>
+                <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest border ${
+                  selectedCashier.status === 'active' || selectedCashier.status === 'approved'
+                    ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                    : selectedCashier.status === 'disabled'
+                      ? 'bg-rose-50 text-rose-600 border-rose-100'
+                      : 'bg-amber-50 text-amber-600 border-amber-100'
+                }`}>
+                  {getStatusLabel(selectedCashier.status)}
+                </span>
+              </div>
+
+              {/* Disabled Reason Callout */}
+              {selectedCashier.status === 'disabled' && selectedCashier.disabled_reason && (
+                <div className="p-4 rounded-2xl bg-rose-50/50 border border-rose-100 text-left">
+                  <span className="text-[10px] font-bold text-rose-500 uppercase tracking-widest block mb-1">
+                    Alasan Dinonaktifkan
+                  </span>
+                  <p className="text-xs text-rose-700 font-medium leading-relaxed">
+                    {selectedCashier.disabled_reason}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Deactivation Input */}
+            {isDeactivating ? (
+              <div className="space-y-4 pt-2 border-t border-slate-100" style={{ animation: 'fadeSlideIn 0.2s ease-out' }}>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">
+                    Alasan Nonaktif <span className="text-rose-400">*</span>
+                  </label>
+                  <textarea
+                    value={deactivateReason}
+                    onChange={e => setDeactivateReason(e.target.value)}
+                    placeholder="Contoh: Tidak lagi bekerja di toko ini atau sedang cuti"
+                    rows={3}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 focus:outline-none text-xs text-slate-700 font-medium resize-none transition-all"
+                    onFocus={e => { e.target.style.borderColor = primaryColor; e.target.style.boxShadow = `0 0 0 3px ${primaryColor}20` }}
+                    onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.boxShadow = 'none' }}
+                    autoFocus
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => { setIsDeactivating(false); setDeactivateReason('') }}
+                    disabled={disabling}
+                    className="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={handleDeactivateInDetail}
+                    disabled={disabling || !deactivateReason.trim()}
+                    className="flex-1 py-3 rounded-xl text-white text-xs font-bold uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 shadow-lg"
+                    style={{ 
+                      backgroundColor: primaryColor,
+                      boxShadow: `0 6px 16px ${primaryColor}30` 
+                    }}
+                  >
+                    {disabling ? 'Memproses...' : 'Nonaktifkan'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Primary Action Buttons */
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <div className="flex gap-3">
+                  {selectedCashier.status === 'active' || selectedCashier.status === 'approved' ? (
+                    <button
+                      onClick={() => setIsDeactivating(true)}
+                      disabled={disabling}
+                      className="flex-1 py-3 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-600 text-xs font-bold uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      Nonaktifkan
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleActivateInDetail}
+                      disabled={disabling}
+                      className="flex-1 py-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-600 text-xs font-bold uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      Aktifkan
+                    </button>
+                  )}
+                  <button
+                    onClick={handleDeleteInDetail}
+                    disabled={disabling}
+                    className="flex-1 py-3 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    Hapus Kasir
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes fadeSlideIn {
+          from { opacity: 0; transform: translateY(16px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </>
   )
 }

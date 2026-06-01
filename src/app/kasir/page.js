@@ -44,6 +44,7 @@ export default function Home() {
   const [profile, setProfile] = useState(null)
   const [role, setRole] = useState(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
+  const [disabledReason, setDisabledReason] = useState(null)
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -72,6 +73,9 @@ export default function Home() {
 
       if (userProfile.status !== 'active' && userProfile.status !== 'approved') {
         setRole(userProfile.status === 'disabled' ? 'disabled_kasir' : 'pending_kasir')
+        if (userProfile.status === 'disabled' && userProfile.disabled_reason) {
+          setDisabledReason(userProfile.disabled_reason)
+        }
         setCheckingAuth(false)
         return
       }
@@ -556,9 +560,15 @@ export default function Home() {
               </svg>
             </div>
             <h2 className="text-2xl font-black text-gray-800 mb-3 tracking-tight">Akun Dinonaktifkan</h2>
-            <p className="text-gray-500 text-sm leading-relaxed mb-8">
+            <p className="text-gray-500 text-sm leading-relaxed mb-4">
               Akun kasir Anda telah <strong>dinonaktifkan</strong> oleh Admin toko. Anda tidak dapat mengakses sistem hingga Admin mengaktifkan kembali akun Anda.
             </p>
+            {disabledReason && (
+              <div className="bg-rose-50 border border-rose-100 rounded-2xl p-4 mb-6 text-left">
+                <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-1">Alasan Nonaktif</p>
+                <p className="text-sm text-rose-700 font-medium leading-relaxed">{disabledReason}</p>
+              </div>
+            )}
             <button onClick={signOut} className="w-full py-4 bg-rose-50 text-rose-600 rounded-2xl font-bold hover:bg-rose-100 transition-all active:scale-95 text-sm uppercase tracking-widest">
               Keluar / Logout
             </button>

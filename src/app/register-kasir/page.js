@@ -149,7 +149,7 @@ export default function RegisterKasir() {
                 value={inviteCode}
                 onChange={(e) => setInviteCode(normalizeInviteCode(e.target.value))}
                 required
-                placeholder="KSR-XA82-PQ91"
+                placeholder="KSR-xxxx-xxx"
                 className="w-full px-5 py-4 rounded-2xl border border-gray-200 bg-gray-50/50 focus:outline-none text-gray-700 font-black tracking-widest text-sm uppercase"
               />
             </div>

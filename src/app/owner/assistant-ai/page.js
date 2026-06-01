@@ -346,14 +346,6 @@ export default function AssistantAIPage() {
     'Performa penjualan hari ini?'
   ]
 
-  if (checkingAuth) {
-    return (
-      <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: primaryColor }} />
-      </div>
-    )
-  }
-
   return (
     <>
       <style>{`
@@ -372,7 +364,11 @@ export default function AssistantAIPage() {
             <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md -mx-4 md:-mx-8 px-4 md:px-8 py-6 mb-2 flex justify-between items-center border-b border-slate-100">
               <div>
                 <h1 className="text-3xl font-semibold tracking-tight" style={{ color: primaryColor }}>AI Business Assistant</h1>
-                <p className="text-sm text-slate-500 mt-1">{storeName ? `Analisa real-time untuk ${storeName}` : 'Memuat data toko…'}</p>
+                {checkingAuth || cardsLoading ? (
+                  <div className="h-4 w-48 bg-slate-100 rounded-full animate-pulse mt-2" />
+                ) : (
+                  <p className="text-sm text-slate-500 mt-1">{storeName ? `Analisa real-time untuk ${storeName}` : 'Memuat data toko…'}</p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <span className="flex items-center gap-1.5 text-[10px] font-bold px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">
@@ -394,42 +390,91 @@ export default function AssistantAIPage() {
                   <div className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
                   <span className="text-sm font-semibold text-gray-700">Chat dengan AI Business Assistant</span>
                 </div>
-                <span className="text-xs text-gray-400">{messages.length} pesan</span>
+                {checkingAuth || cardsLoading ? (
+                  <div className="h-3 w-12 bg-slate-100 rounded-full animate-pulse" />
+                ) : (
+                  <span className="text-xs text-gray-400">{messages.length} pesan</span>
+                )}
               </div>
 
               {/* Suggestion chips */}
               <div className="px-4 pt-4 pb-2">
                 <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                  {suggestions.map((s, i) => (
-                    <button key={i} onClick={() => sendMessage(s)} disabled={isTyping || !analytics}
-                      className="flex-shrink-0 px-4 py-2 bg-white border border-gray-200 rounded-full text-sm font-medium text-gray-600 whitespace-nowrap transition-all duration-150 disabled:opacity-40"
-                      onMouseEnter={e => { e.currentTarget.style.borderColor = primaryColor; e.currentTarget.style.color = primaryColor }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = '' }}>
-                      {s}
-                    </button>
-                  ))}
+                  {checkingAuth || cardsLoading ? (
+                    [...Array(4)].map((_, i) => (
+                      <div 
+                        key={i} 
+                        className="flex-shrink-0 px-4 py-2 rounded-full h-9 w-32 animate-pulse bg-slate-100/80 border border-slate-100" 
+                      />
+                    ))
+                  ) : (
+                    suggestions.map((s, i) => (
+                      <button key={i} onClick={() => sendMessage(s)} disabled={isTyping || !analytics}
+                        className="flex-shrink-0 px-4 py-2 bg-white border border-gray-200 rounded-full text-sm font-medium text-gray-600 whitespace-nowrap transition-all duration-150 disabled:opacity-40"
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = primaryColor; e.currentTarget.style.color = primaryColor }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = '' }}>
+                        {s}
+                      </button>
+                    ))
+                  )}
                 </div>
               </div>
 
               {/* Messages */}
               <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4 custom-scrollbar min-h-[280px]">
-                {messages.length === 0 && !isTyping && (
-                  <div className="flex flex-col items-center justify-center h-full text-center py-12 gap-4">
-                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ backgroundColor: `${primaryColor}10` }}>
-                      <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 9.75a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 0 1 .778-.332 48.294 48.294 0 0 0 5.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
-                      </svg>
+                {checkingAuth || cardsLoading ? (
+                  /* ── CHAT SCREEN SKELETON ── */
+                  <div className="space-y-6">
+                    {/* Left chat bubble skeleton */}
+                    <div className="flex items-start gap-3 animate-pulse">
+                      <div className="w-8 h-8 rounded-xl bg-slate-200 flex-shrink-0" />
+                      <div className="bg-slate-50 border border-slate-100/60 rounded-2xl rounded-tl-sm px-5 py-4 w-[70%] space-y-2.5">
+                        <div className="h-3 w-16 bg-slate-200 rounded-full" />
+                        <div className="h-3 w-full bg-slate-200/80 rounded-full" />
+                        <div className="h-3 w-[85%] bg-slate-200/60 rounded-full" />
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold text-slate-700 text-base">Tanyakan apa saja tentang bisnis Anda</p>
-                      <p className="text-slate-400 text-sm mt-1">
-                        {cardsLoading ? 'Sedang memuat data toko dari database…' : 'AI membaca langsung data database toko Anda.'}
-                      </p>
+
+                    {/* Right chat bubble skeleton */}
+                    <div className="flex justify-end animate-pulse">
+                      <div className="bg-slate-100 rounded-2xl rounded-tr-sm px-5 py-3.5 w-[50%] space-y-2.5">
+                        <div className="h-3 w-full bg-slate-200/80 rounded-full" />
+                        <div className="h-3 w-[60%] bg-slate-200/60 rounded-full" />
+                      </div>
+                    </div>
+
+                    {/* Left chat bubble skeleton */}
+                    <div className="flex items-start gap-3 animate-pulse">
+                      <div className="w-8 h-8 rounded-xl bg-slate-200 flex-shrink-0" />
+                      <div className="bg-slate-50 border border-slate-100/60 rounded-2xl rounded-tl-sm px-5 py-4 w-[80%] space-y-2.5">
+                        <div className="h-3 w-16 bg-slate-200 rounded-full" />
+                        <div className="h-3 w-full bg-slate-200/80 rounded-full" />
+                        <div className="h-3 w-[90%] bg-slate-200/70 rounded-full" />
+                        <div className="h-3 w-[45%] bg-slate-200/50 rounded-full" />
+                      </div>
                     </div>
                   </div>
+                ) : (
+                  <>
+                    {messages.length === 0 && !isTyping && (
+                      <div className="flex flex-col items-center justify-center h-full text-center py-12 gap-4">
+                        <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ backgroundColor: `${primaryColor}10` }}>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 9.75a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 0 1 .778-.332 48.294 48.294 0 0 0 5.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-700 text-base">Tanyakan apa saja tentang bisnis Anda</p>
+                          <p className="text-slate-400 text-sm mt-1">
+                            AI membaca langsung data database toko Anda.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {messages.map(msg => <ChatBubble key={msg.id} msg={msg} primaryColor={primaryColor} />)}
+                    {isTyping && <TypingIndicator primaryColor={primaryColor} />}
+                  </>
                 )}
-                {messages.map(msg => <ChatBubble key={msg.id} msg={msg} primaryColor={primaryColor} />)}
-                {isTyping && <TypingIndicator primaryColor={primaryColor} />}
                 <div ref={chatEndRef} />
               </div>
 
@@ -441,13 +486,13 @@ export default function AssistantAIPage() {
                   <textarea ref={inputRef} rows={1} value={input}
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder={cardsLoading ? 'Menunggu data toko dimuat…' : 'Tanyakan kondisi bisnis, produk, stok… (Enter kirim)'}
-                    disabled={isTyping || cardsLoading}
+                    placeholder={checkingAuth || cardsLoading ? 'Menyiapkan sistem analisa…' : 'Tanyakan kondisi bisnis, produk, stok… (Enter kirim)'}
+                    disabled={isTyping || checkingAuth || cardsLoading}
                     className="flex-1 bg-transparent text-sm text-gray-700 placeholder-gray-400 resize-none outline-none leading-relaxed disabled:opacity-50"
                     style={{ maxHeight: '120px' }} />
-                  <button onClick={() => sendMessage()} disabled={!input.trim() || isTyping || cardsLoading}
+                  <button onClick={() => sendMessage()} disabled={!input.trim() || isTyping || checkingAuth || cardsLoading}
                     className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-150 active:scale-90 disabled:opacity-30"
-                    style={{ backgroundColor: (!input.trim() || isTyping || cardsLoading) ? '#e5e7eb' : primaryColor, color: (!input.trim() || isTyping || cardsLoading) ? '#9ca3af' : '#fff' }}
+                    style={{ backgroundColor: (!input.trim() || isTyping || checkingAuth || cardsLoading) ? '#e5e7eb' : primaryColor, color: (!input.trim() || isTyping || checkingAuth || cardsLoading) ? '#9ca3af' : '#fff' }}
                     aria-label="Kirim">
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
