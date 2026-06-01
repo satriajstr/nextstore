@@ -27,7 +27,7 @@ export default function Register() {
       // The Database Trigger will automatically:
       // - Create the Store with the name provided in metadata
       // - Create the Admin Profile linked to that store
-      // - Set status to 'approved'
+      // - Set status to 'active'
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,

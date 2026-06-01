@@ -159,6 +159,7 @@ export default function Dashboard() {
   // States for Card
   const [transactions, setTransactions] = useState([])
   const [isClosed, setIsClosed] = useState(false)
+  const [summaryStatus, setSummaryStatus] = useState(null)
   const [closing, setClosing] = useState(false)
   const [toast, setToast] = useState(null)
   const [loadingData, setLoadingData] = useState(true)
@@ -250,7 +251,8 @@ export default function Dashboard() {
         .eq('date', today)
         .maybeSingle()
 
-      setIsClosed(summaryData?.status === 'closed')
+      setIsClosed(!summaryData || summaryData?.status === 'closed')
+      setSummaryStatus(summaryData?.status ?? 'not_opened')
     } catch (err) {
       console.error(err)
     }
@@ -433,10 +435,14 @@ export default function Dashboard() {
   const handleOpenDay = async () => {
     if (!profile?.store_id) return
 
+    const isNotOpened = summaryStatus === 'not_opened'
+
     const confirmed = await showConfirm({
       icon: '🔓',
-      title: 'Buka Kembali Hari Ini?',
-      message: 'Status laporan akan menjadi "Terbuka". Data riwayat tetap tersimpan.',
+      title: isNotOpened ? 'Mulai Operasional Hari Ini?' : 'Buka Kembali Hari Ini?',
+      message: isNotOpened 
+        ? 'Membuka hari kerja baru untuk kasir. Kasir dapat mulai melakukan transaksi baru.'
+        : 'Status laporan akan menjadi "Terbuka". Data riwayat tetap tersimpan.',
       labelYes: 'Buka',
       labelNo: 'Batal',
     })
@@ -447,11 +453,14 @@ export default function Dashboard() {
     try {
       const { error } = await supabase
         .from('daily_summary')
-        .update({ status: 'open' })
-        .eq('store_id', profile.store_id)
-        .eq('date', today)
+        .upsert({
+          date: today,
+          store_id: profile.store_id,
+          status: 'open'
+        }, { onConflict: 'date, store_id' })
+
       if (error) throw error
-      showToast('Berhasil dibuka kembali. Data penjualan tetap ada.', 'success')
+      showToast(isNotOpened ? 'Hari operasional berhasil dibuka!' : 'Berhasil dibuka kembali. Data penjualan tetap ada.', 'success')
 
       setIsClosed(false)
       fetchDashboardData()
@@ -466,13 +475,7 @@ export default function Dashboard() {
   const totalCash = transactions.filter(t => t.payment_method === 'Tunai').reduce((acc, t) => acc + (t.total_harga || 0), 0)
 
 
-  if (checkingAuth) {
-    return (
-      <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: primaryColor }}></div>
-      </div>
-    )
-  }
+  const isPageLoading = checkingAuth || loadingData
 
   return (
     <>
@@ -492,13 +495,17 @@ export default function Dashboard() {
           <div className="max-w-6xl mx-auto p-4 md:p-8">
             <header className="mb-8">
               <h1 className="text-3xl font-semibold tracking-tight" style={{ color: primaryColor }}>Dashboard</h1>
-              <p className="text-slate-400 text-sm mt-1">Selamat datang, Admin {profile?.full_name ?? storeName}.</p>
+              {isPageLoading ? (
+                <div className="h-4 w-64 rounded-full animate-pulse mt-2" style={{ backgroundColor: `${primaryColor}15` }}></div>
+              ) : (
+                <p className="text-slate-400 text-sm mt-1">Selamat datang, Admin {profile?.full_name ?? storeName}.</p>
+              )}
             </header>
 
             {/* CARD TOTAL PENJUALAN + AI ASSISTANT */}
             <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 mb-8">
 
-              {loadingData ? (
+              {isPageLoading ? (
                 /* ── SKELETON: Total Penjualan Card ── */
                 <section className="border-2 shadow-md shadow-slate-100/50 rounded-[2rem] p-8 flex flex-col md:flex-row justify-between items-center gap-6" style={{ borderColor: `${primaryColor}20`, background: `linear-gradient(135deg, ${primaryColor}12 0%, ${primaryColor}06 60%, #ffffff 100%)` }}>
                   <div className="w-full md:w-auto">
@@ -530,8 +537,9 @@ export default function Dashboard() {
               ) : (
                 /* ── REAL: Total Penjualan Card ── */
                 <section
-                  className="border-2 shadow-md shadow-slate-100/50 hover:shadow-lg hover:-translate-y-1 rounded-[2rem] p-8 flex flex-col md:flex-row justify-between items-center gap-6 transition-all duration-300"
+                  className="border-2 shadow-md shadow-slate-100/50 hover:shadow-lg hover:-translate-y-1 rounded-[2rem] p-8 flex flex-col md:flex-row justify-between items-center gap-6"
                   style={{
+                    transition: 'transform 300ms ease, box-shadow 300ms ease',
                     borderColor: isClosed ? 'rgba(148, 163, 184, 0.35)' : `${primaryColor}30`,
                     background: isClosed
                       ? 'linear-gradient(135deg, rgba(148,163,184,0.18) 0%, rgba(148,163,184,0.08) 60%, #ffffff 100%)'
@@ -541,9 +549,19 @@ export default function Dashboard() {
                   <div className="text-left w-full md:w-auto">
                     <div className="flex items-center gap-2 mb-2">
                       <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        {isClosed ? 'Rekap Penjualan (HARI DITUTUP)' : 'Total Penjualan Hari Ini'}
+                        {summaryStatus === 'closed' 
+                          ? 'Rekap Penjualan (HARI DITUTUP)' 
+                          : summaryStatus === 'not_opened'
+                            ? 'Operasional Belum Dibuka'
+                            : 'Total Penjualan Hari Ini'}
                       </p>
-                      {isClosed && <span className="bg-emerald-500 text-white text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest">Locked</span>}
+                      {isClosed && (
+                        <span className={`text-white text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest ${
+                          summaryStatus === 'closed' ? 'bg-slate-400' : 'bg-amber-500 animate-pulse'
+                        }`}>
+                          {summaryStatus === 'closed' ? 'Locked' : 'Belum Mulai'}
+                        </span>
+                      )}
                     </div>
                     <h2 className="text-3xl md:text-4xl font-black tracking-tight" style={{ color: isClosed ? '#64748b' : primaryColor }}>
                       {formatIDR(totalHariIni)}
@@ -561,7 +579,7 @@ export default function Dashboard() {
                       <div className="w-[1px] h-8 bg-slate-200/80 self-center"></div>
                       <div className="flex flex-col">
                         <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider flex items-center gap-1">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75h4.5v4.5h-4.5zM15.75 3.75h4.5v4.5h-4.5zM3.75 15.75h4.5v4.5h-4.5zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z" />
                           </svg>
                           QRIS / Non-Tunai
@@ -579,7 +597,7 @@ export default function Dashboard() {
 
                     <div className="w-px h-8 bg-slate-200/80" />
 
-                    {!isClosed ? (
+                    {summaryStatus === 'open' ? (
                       <button
                         onClick={handleCloseDay}
                         disabled={closing}
@@ -592,14 +610,14 @@ export default function Dashboard() {
                         onClick={handleOpenDay}
                         className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg hover:bg-emerald-700 transition-all active:scale-95 text-xs uppercase tracking-wider whitespace-nowrap"
                       >
-                        Buka
+                        {summaryStatus === 'not_opened' ? 'Buka Toko' : 'Buka'}
                       </button>
                     )}
                   </div>
                 </section>
               )}
 
-              {loadingData ? (
+              {isPageLoading ? (
                 /* ── SKELETON: AI Assistant Card ── */
                 <section className="bg-white shadow-sm rounded-[2rem] p-6 w-full md:w-[200px] shrink-0 flex flex-col justify-between" style={{ border: `1px solid ${primaryColor}15` }}>
                   <div>
@@ -614,12 +632,15 @@ export default function Dashboard() {
                 </section>
               ) : (
                 /* ── REAL: AI Assistant Card ── */
-                <section
-                  onClick={() => router.push('/owner/assistant-ai')}
-                  className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-6 w-full md:w-[200px] shrink-0 flex flex-col justify-between cursor-pointer transition-all duration-300"
-                  style={{ outline: '2px solid transparent' }}
+                 <section
+                   onClick={() => router.push('/owner/assistant-ai')}
+                   className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-6 w-full md:w-[200px] shrink-0 flex flex-col justify-between cursor-pointer"
+                  style={{
+                    transition: 'transform 300ms ease, box-shadow 300ms ease',
+                    outline: '2px solid rgba(0,0,0,0)'
+                  }}
                   onMouseEnter={e => e.currentTarget.style.outline = `2px solid ${primaryColor}40`}
-                  onMouseLeave={e => e.currentTarget.style.outline = '2px solid transparent'}
+                  onMouseLeave={e => e.currentTarget.style.outline = '2px solid rgba(0,0,0,0)'}
                 >
                   <div>
                     <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: `${primaryColor}15` }}>
@@ -644,7 +665,7 @@ export default function Dashboard() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-[1fr_200px_200px] gap-4 mb-8">
 
-              {loadingData ? (
+              {isPageLoading ? (
                 /* ── SKELETON: Chart Card ── */
                 <section className="bg-white shadow-sm rounded-[2rem] p-6" style={{ border: `1px solid ${primaryColor}15` }}>
                   <div className="flex justify-between items-center mb-4">
@@ -675,12 +696,15 @@ export default function Dashboard() {
               ) : (
                 /* ── REAL: Rekap Harian Chart ── */
                 historyChart.length > 1 && (
-                  <section
-                    onClick={() => router.push('/laporan?tab=riwayat&grafik=1&days=7')}
-                    className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-6 transition-all cursor-pointer duration-300"
-                    style={{ outline: '2px solid transparent' }}
+                   <section
+                     onClick={() => router.push('/laporan?tab=riwayat&grafik=1&days=7')}
+                     className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-6 cursor-pointer"
+                    style={{
+                      transition: 'transform 300ms ease, box-shadow 300ms ease',
+                      outline: '2px solid rgba(0,0,0,0)'
+                    }}
                     onMouseEnter={e => e.currentTarget.style.outline = `2px solid ${primaryColor}40`}
-                    onMouseLeave={e => e.currentTarget.style.outline = '2px solid transparent'}
+                    onMouseLeave={e => e.currentTarget.style.outline = '2px solid rgba(0,0,0,0)'}
                   >
                     <div className="flex justify-between items-center mb-4">
                       <div className="flex items-center gap-2">
@@ -718,7 +742,7 @@ export default function Dashboard() {
                 )
               )}
 
-              {loadingData ? (
+              {isPageLoading ? (
                 /* ── SKELETON: Transaksi Hari Ini ── */
                 <section className="bg-white shadow-sm rounded-[2rem] p-5 flex flex-col" style={{ border: `1px solid ${primaryColor}15` }}>
                   <div className="flex items-center justify-between mb-3">
@@ -747,10 +771,13 @@ export default function Dashboard() {
                 /* ── REAL: Transaksi Hari Ini ── */
                 <section
                   onClick={() => router.push('/laporan')}
-                  className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-5 flex flex-col cursor-pointer transition-all duration-300"
-                  style={{ outline: '2px solid transparent' }}
+                  className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-5 flex flex-col cursor-pointer"
+                  style={{
+                    transition: 'transform 300ms ease, box-shadow 300ms ease',
+                    outline: '2px solid rgba(0,0,0,0)'
+                  }}
                   onMouseEnter={e => e.currentTarget.style.outline = `2px solid ${primaryColor}40`}
-                  onMouseLeave={e => e.currentTarget.style.outline = '2px solid transparent'}
+                  onMouseLeave={e => e.currentTarget.style.outline = '2px solid rgba(0,0,0,0)'}
                 >
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-xs font-bold text-slate-800">Transaksi Hari Ini</p>
@@ -794,7 +821,7 @@ export default function Dashboard() {
                 </section>
               )}
 
-              {loadingData ? (
+              {isPageLoading ? (
                 /* ── SKELETON: Stok Kritis ── */
                 <section className="bg-white shadow-sm rounded-[2rem] p-5 flex flex-col" style={{ border: `1px solid ${primaryColor}15` }}>
                   <div className="flex items-center justify-between mb-4">
@@ -821,10 +848,13 @@ export default function Dashboard() {
                 criticalStock.length > 0 && (
                   <section
                     onClick={() => router.push('/produk')}
-                    className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-5 flex flex-col cursor-pointer transition-all duration-300"
-                    style={{ outline: '2px solid transparent' }}
+                    className="group bg-white border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-1 rounded-[2rem] p-5 flex flex-col cursor-pointer"
+                    style={{
+                      transition: 'transform 300ms ease, box-shadow 300ms ease',
+                      outline: '2px solid rgba(0,0,0,0)'
+                    }}
                     onMouseEnter={e => e.currentTarget.style.outline = `2px solid ${primaryColor}40`}
-                    onMouseLeave={e => e.currentTarget.style.outline = '2px solid transparent'}
+                    onMouseLeave={e => e.currentTarget.style.outline = '2px solid rgba(0,0,0,0)'}
                   >
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">

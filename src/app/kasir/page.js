@@ -70,7 +70,7 @@ export default function Home() {
         return
       }
 
-      if (userProfile.status !== 'approved') {
+      if (userProfile.status !== 'active' && userProfile.status !== 'approved') {
         setRole(userProfile.status === 'disabled' ? 'disabled_kasir' : 'pending_kasir')
         setCheckingAuth(false)
         return
@@ -151,6 +151,7 @@ export default function Home() {
   const [selectedQuickCash, setSelectedQuickCash] = useState(null)
   const [paymentMethod, setPaymentMethod] = useState('Tunai')
   const [isClosed, setIsClosed] = useState(false)
+  const [summaryStatus, setSummaryStatus] = useState('not_opened')
   const [outsideHours, setOutsideHours] = useState(false)
   const [operatingHours, setOperatingHours] = useState({ open: '', close: '' })
 
@@ -177,7 +178,6 @@ export default function Home() {
     }
     setLoading(false)
   }, [profile?.store_id])
-
   // 1.1 Check Store Closed Status & Jam Operasional
   const checkStatus = useCallback(async () => {
     if (!profile?.store_id) return
@@ -195,7 +195,8 @@ export default function Home() {
         .eq('id', profile.store_id)
         .single(),
     ])
-    setIsClosed(summary?.status === 'closed')
+    setSummaryStatus(summary?.status ?? 'not_opened')
+    setIsClosed(!summary || summary?.status === 'closed')
 
     const hoursStatus = getStoreHoursStatus(store?.open_time, store?.close_time)
     setOutsideHours(hoursStatus.hasHours && !hoursStatus.isOpen)
@@ -568,14 +569,20 @@ export default function Home() {
       {isClosed && (
         <div className="fixed inset-0 z-[150] bg-gray-50 flex items-center justify-center p-6">
           <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-xl p-10 text-center animate-fade-in border border-gray-100">
-            <div className="w-20 h-20 bg-rose-100 text-rose-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+            <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 ${summaryStatus === 'closed' ? 'bg-rose-100 text-rose-500' : 'bg-amber-100 text-amber-500'}`}>
+              {summaryStatus === 'closed' ? (
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
               </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 animate-pulse" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
             </div>
-            <h2 className="text-2xl font-black text-gray-800 mb-3 tracking-tight">Hari Kerja Ditutup</h2>
+            <h2 className="text-2xl font-black text-gray-800 mb-3 tracking-tight">{summaryStatus === 'closed' ? 'Hari Kerja Ditutup' : 'Hari Kerja Belum Mulai'}</h2>
             <p className="text-gray-500 text-sm leading-relaxed mb-8">
-              Toko <strong>{storeName}</strong> telah menutup operasional hari ini. Anda tidak dapat membuka kasir atau memproses transaksi baru hingga hari kerja dibuka kembali oleh Admin.
+              {summaryStatus === 'closed' ? `Toko ${storeName} telah menutup operasional hari ini. Anda tidak dapat membuka kasir atau memproses transaksi baru hingga hari kerja dibuka kembali oleh Admin.` : `Toko ${storeName} belum membuka operasional untuk hari kerja baru. Kasir baru dapat memproses transaksi setelah Admin secara resmi membuka operasional toko.`}
             </p>
             <button onClick={signOut} className="w-full py-4 bg-rose-50 text-rose-600 rounded-2xl font-bold hover:bg-rose-100 transition-all active:scale-95 text-sm uppercase tracking-widest">
               Keluar / Logout

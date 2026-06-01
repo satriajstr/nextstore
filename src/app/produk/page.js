@@ -264,6 +264,71 @@ function ProductModal({ mode, product, categories, onSave, onClose, saving }) {
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
+function ProductSummarySkeleton({ primaryColor }) {
+  return (
+    <>
+      {[1, 2, 3].map((item) => (
+        <div
+          key={item}
+          className="bg-white rounded-[2rem] p-6 border shadow-sm"
+          style={{ borderColor: `${primaryColor}15`, boxShadow: '0 4px 20px -2px rgba(148, 163, 184, 0.08)' }}
+        >
+          <div className="flex justify-between items-start mb-5">
+            <div className="w-10 h-10 rounded-2xl animate-pulse" style={{ backgroundColor: `${primaryColor}18` }}></div>
+            {item === 2 && (
+              <div className="h-5 w-20 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+            )}
+          </div>
+          <div className="h-2.5 w-24 rounded-full animate-pulse mb-3" style={{ backgroundColor: `${primaryColor}18` }}></div>
+          <div className="h-6 w-20 rounded-xl animate-pulse" style={{ backgroundColor: `${primaryColor}20` }}></div>
+        </div>
+      ))}
+    </>
+  )
+}
+
+function ProductTableSkeleton({ primaryColor }) {
+  return (
+    <div className="min-w-[780px]">
+      <div className="grid grid-cols-[64px_1.6fr_1fr_1fr_90px_130px] gap-0 border-b border-slate-100 bg-white px-6 py-5">
+        {[40, 110, 90, 80, 44, 48].map((width, index) => (
+          <div
+            key={index}
+            className={`h-2.5 rounded-full animate-pulse ${index === 0 || index >= 4 ? 'mx-auto' : index === 2 || index === 3 ? 'ml-auto' : ''}`}
+            style={{ width, backgroundColor: `${primaryColor}12` }}
+          ></div>
+        ))}
+      </div>
+      <div className="divide-y divide-slate-100/60">
+        {[1, 2, 3, 4, 5, 6].map((row) => (
+          <div key={row} className="grid grid-cols-[64px_1.6fr_1fr_1fr_90px_130px] items-center px-6 py-5">
+            <div className="h-4 w-5 rounded-lg animate-pulse mx-auto" style={{ backgroundColor: `${primaryColor}10` }}></div>
+            <div>
+              <div className="h-3.5 w-36 rounded-full animate-pulse mb-2" style={{ backgroundColor: `${primaryColor}20` }}></div>
+              <div className="h-5 w-20 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+            </div>
+            <div className="h-3 w-24 rounded-full animate-pulse ml-auto" style={{ backgroundColor: `${primaryColor}12` }}></div>
+            <div className="h-3.5 w-24 rounded-full animate-pulse ml-auto" style={{ backgroundColor: `${primaryColor}20` }}></div>
+            <div className="h-7 w-12 rounded-lg animate-pulse mx-auto" style={{ backgroundColor: `${primaryColor}12` }}></div>
+            <div className="flex justify-center gap-2">
+              <div className="h-8 w-14 rounded-xl animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+              <div className="h-8 w-16 rounded-xl animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="px-6 py-5 border-t border-slate-100 bg-white flex items-center justify-between">
+        <div className="h-3 w-48 rounded-full animate-pulse" style={{ backgroundColor: `${primaryColor}18` }}></div>
+        <div className="flex items-center gap-1.5">
+          {[1, 2, 3, 4].map((item) => (
+            <div key={item} className="w-9 h-9 rounded-xl animate-pulse" style={{ backgroundColor: `${primaryColor}10` }}></div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Produk() {
   const { primaryColor } = useTheme()
   const router = useRouter()
@@ -552,15 +617,11 @@ export default function Produk() {
 
   // Ambil daftar kategori unik untuk saran
   const uniqueCategories = Array.from(new Set(products.map(p => p.category).filter(Boolean)))
+  const isPageLoading = checkingAuth || loading
 
   return (
     <>
       <Toast toast={toast} onClose={() => setToast(null)} />
-      {checkingAuth && (
-        <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: primaryColor }}></div>
-        </div>
-      )}
       <ConfirmDialog confirm={confirmState} onYes={handleConfirmYes} onNo={handleConfirmNo} />
       {modal && (
         <ProductModal
@@ -582,10 +643,14 @@ export default function Produk() {
             <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md -mx-4 md:-mx-8 px-4 md:px-8 py-6 mb-4 flex flex-col md:flex-row justify-between gap-4 border-b border-slate-100">
               <div>
                 <h1 className="text-3xl font-semibold tracking-tight" style={{ color: primaryColor }}>Kelola Produk</h1>
-                <span className="text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest mt-1 inline-block border"
-                  style={{ color: primaryColor, borderColor: `${primaryColor}20`, backgroundColor: `${primaryColor}08` }}>
-                  {displayedProducts.length} Produk
-                </span>
+                {isPageLoading ? (
+                  <div className="h-5 w-20 rounded-full animate-pulse mt-2" style={{ backgroundColor: `${primaryColor}18` }}></div>
+                ) : (
+                  <span className="text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest mt-1 inline-block border"
+                    style={{ color: primaryColor, borderColor: `${primaryColor}20`, backgroundColor: `${primaryColor}08` }}>
+                    {displayedProducts.length} Produk
+                  </span>
+                )}
               </div>
               <div className="flex gap-2 items-start flex-wrap md:flex-nowrap">
                 <select
@@ -628,11 +693,14 @@ export default function Produk() {
 
             {/* SUMMARY STATS */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8 pt-4">
-              {[
+              {isPageLoading ? (
+                <ProductSummarySkeleton primaryColor={primaryColor} />
+              ) : (
+                [
                 { label: 'Total Produk', value: filtered.length, type: 'total' },
                 { label: `Stok Kritis (≤${criticalThreshold})`, value: filtered.filter(p => (p.stock ?? 0) <= criticalThreshold).length, type: 'critical' },
                 { label: 'Total Nilai Stok', value: formatIDR(filtered.reduce((a, p) => a + (p.harga_modal * (p.stock ?? 0)), 0)), type: 'value' },
-              ].map((stat) => {
+                ].map((stat) => {
                 const getStatIcon = (type) => {
                   if (type === 'total') {
                     return (
@@ -712,7 +780,7 @@ export default function Produk() {
                     )}
                   </div>
                 )
-              })}
+              }))}
             </div>
 
             {/* PRODUCT TABLE */}
@@ -732,11 +800,8 @@ export default function Produk() {
                 )}
               </div>
               <div className="overflow-x-auto">
-                {loading ? (
-                  <div className="p-16 text-center text-gray-400">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4" style={{ borderColor: primaryColor }}></div>
-                    Memuat produk...
-                  </div>
+                {isPageLoading ? (
+                  <ProductTableSkeleton primaryColor={primaryColor} />
                 ) : displayedProducts.length === 0 ? (
                   <div className="p-16 text-center text-gray-300">
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">

@@ -32,7 +32,15 @@ function darken(hex, factor = 0.15) {
 export function ThemeProvider({ children }) {
   const [storeName, setStoreName] = useState(THEME_DEFAULTS.storeName)
   const [primaryColor, setPrimaryColor] = useState(THEME_DEFAULTS.primaryColor)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [loaded, setLoaded] = useState(false)
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      localStorage.setItem('sidebar_collapsed', String(!prev))
+      return !prev
+    })
+  }
 
   useEffect(() => {
     // Sinkronisasi instan di browser sesaat setelah mount untuk mencegah text & style mismatch
@@ -46,6 +54,11 @@ export function ThemeProvider({ children }) {
         // Default to system indigo theme for guest pages
         setPrimaryColor('#6366f1')
       }
+    } catch (e) {}
+
+    try {
+      const savedCollapsed = localStorage.getItem('sidebar_collapsed')
+      if (savedCollapsed === 'true') setSidebarCollapsed(true)
     } catch (e) {}
 
     const loadTheme = async () => {
@@ -212,7 +225,7 @@ export function ThemeProvider({ children }) {
   `;
 
   return (
-    <ThemeContext.Provider value={{ storeName, primaryColor, primaryLight, primaryLighter, primaryShadow, saveTheme, loaded }}>
+    <ThemeContext.Provider value={{ storeName, primaryColor, primaryLight, primaryLighter, primaryShadow, saveTheme, loaded, sidebarCollapsed, toggleSidebar }}>
       <style suppressHydrationWarning>{themeCSS}</style>
       {children}
     </ThemeContext.Provider>

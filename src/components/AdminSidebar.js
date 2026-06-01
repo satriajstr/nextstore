@@ -116,9 +116,10 @@ function CollapsedFlyout({ label, sublabel, accent, active, icon }) {
 
 export default function AdminSidebar() {
   const pathname = usePathname()
-  const { storeName, primaryColor } = useTheme()
+  const { storeName, primaryColor, sidebarCollapsed, toggleSidebar } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [collapsed, setCollapsed] = useState(false)
+  const collapsed = sidebarCollapsed
+  const [transitionEnabled, setTransitionEnabled] = useState(false)
   const [showChangePassword, setShowChangePassword] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -158,16 +159,11 @@ export default function AdminSidebar() {
   }, [])
 
   useEffect(() => {
-    const saved = localStorage.getItem('sidebar_collapsed')
-    if (saved === 'true') setCollapsed(true)
+    const timer = setTimeout(() => setTransitionEnabled(true), 150)
+    return () => clearTimeout(timer)
   }, [])
 
-  const toggleCollapsed = () => {
-    setCollapsed((prev) => {
-      localStorage.setItem('sidebar_collapsed', String(!prev))
-      return !prev
-    })
-  }
+  const toggleCollapsed = toggleSidebar
 
   const handleChangePassword = async (e) => {
     e.preventDefault()
@@ -243,7 +239,7 @@ export default function AdminSidebar() {
         className={`
           fixed top-0 left-0 h-full z-50 flex flex-col
           bg-white border-r border-gray-100 shadow-xl
-          transition-[width,transform] duration-300 ease-in-out
+          ${transitionEnabled ? 'transition-[width,transform] duration-300 ease-in-out' : ''}
           md:sticky md:top-0 md:h-screen md:shadow-none md:z-auto md:shrink-0 md:translate-x-0
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
           ${collapsed ? 'w-[72px] overflow-visible' : 'w-64'}
