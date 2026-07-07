@@ -118,7 +118,18 @@ export default function AdminSidebar() {
   const pathname = usePathname()
   const { storeName, primaryColor, sidebarCollapsed, toggleSidebar } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const collapsed = sidebarCollapsed
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  const collapsed = isMobile ? false : sidebarCollapsed
   const [transitionEnabled, setTransitionEnabled] = useState(false)
   const [showChangePassword, setShowChangePassword] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
@@ -203,15 +214,6 @@ export default function AdminSidebar() {
     <>
       {/* Mobile Top Bar */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 shadow-sm">
-        <div className="flex items-center gap-2">
-          <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-md flex-shrink-0"
-            style={{ backgroundColor: primaryColor }}
-          >
-            {STORE_ICON}
-          </div>
-          <span className="font-black text-gray-800 tracking-tight text-base">{storeName}</span>
-        </div>
         <button
           onClick={() => setMobileOpen((prev) => !prev)}
           className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600 transition-all duration-200"
@@ -226,6 +228,15 @@ export default function AdminSidebar() {
             </svg>
           )}
         </button>
+        <div className="flex items-center gap-2">
+          <div
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-md flex-shrink-0"
+            style={{ backgroundColor: primaryColor }}
+          >
+            {STORE_ICON}
+          </div>
+          <span className="font-black text-gray-800 tracking-tight text-base">{storeName}</span>
+        </div>
       </div>
 
       {mobileOpen && (
@@ -250,29 +261,50 @@ export default function AdminSidebar() {
           className={`group relative border-b border-gray-50 flex items-center transition-all duration-300 ease-out
             ${collapsed ? 'p-4 justify-center' : 'p-5'}`}
         >
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg flex-shrink-0 transition-transform duration-300 ease-out group-hover:scale-105"
-            style={{ backgroundColor: primaryColor, boxShadow: `0 4px 14px ${primaryColor}50` }}
-          >
-            {STORE_ICON}
-          </div>
+          {isMobile ? (
+            <button
+              onClick={() => setMobileOpen(false)}
+              className="flex items-center gap-2 w-full px-2 py-2 rounded-xl text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all font-semibold text-sm"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-5 h-5 text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+              </svg>
+              <span>Tutup Navigasi</span>
+            </button>
+          ) : (
+            <>
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg flex-shrink-0 transition-transform duration-300 ease-out group-hover:scale-105"
+                style={{ backgroundColor: primaryColor, boxShadow: `0 4px 14px ${primaryColor}50` }}
+              >
+                {STORE_ICON}
+              </div>
 
-          {!collapsed && (
-            <div className="ml-3 min-w-0 overflow-hidden transition-all duration-300 ease-out opacity-100 translate-x-0">
-              <h1 className="font-black text-gray-800 tracking-tight leading-none text-lg truncate">{storeName}</h1>
-              <p className="text-[10px] font-bold uppercase tracking-[0.15em] mt-0.5" style={{ color: primaryColor }}>
-                Admin Panel
-              </p>
-            </div>
-          )}
+              {!collapsed && (
+                <div className="ml-3 min-w-0 overflow-hidden transition-all duration-300 ease-out opacity-100 translate-x-0">
+                  <h1 className="font-black text-gray-800 tracking-tight leading-none text-lg truncate">{storeName}</h1>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.15em] mt-0.5" style={{ color: primaryColor }}>
+                    Admin Panel
+                  </p>
+                </div>
+              )}
 
-          {collapsed && (
-            <CollapsedFlyout
-              label={storeName}
-              sublabel="Admin Panel"
-              accent={primaryColor}
-              icon={STORE_ICON}
-            />
+              {collapsed && (
+                <CollapsedFlyout
+                  label={storeName}
+                  sublabel="Admin Panel"
+                  accent={primaryColor}
+                  icon={STORE_ICON}
+                />
+              )}
+            </>
           )}
         </div>
 
@@ -348,27 +380,35 @@ export default function AdminSidebar() {
         </nav>
 
         {/* Collapse toggle */}
-        <div className={`px-2 pb-2 ${collapsed ? 'flex justify-center' : ''}`}>
-          <button
-            onClick={toggleCollapsed}
-            className={`relative z-10 ${collapsed ? `${iconBtnCollapsed} hover:bg-slate-50 text-slate-400` : `${iconBtnExpanded} text-slate-400 hover:text-slate-600 hover:bg-slate-50 !py-2.5`}`}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className={`w-4 h-4 flex-shrink-0 transition-transform duration-300 ease-out ${collapsed ? 'rotate-180' : ''}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
-              stroke="currentColor"
+        {!isMobile && (
+          <div className={`px-2 pb-2 ${collapsed ? 'flex justify-center' : ''}`}>
+            <button
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                  setMobileOpen(false)
+                } else {
+                  toggleCollapsed()
+                }
+              }}
+              className={`relative z-10 ${collapsed ? `${iconBtnCollapsed} hover:bg-slate-50 text-slate-400` : `${iconBtnExpanded} text-slate-400 hover:text-slate-600 hover:bg-slate-50 !py-2.5`}`}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-            </svg>
-            {!collapsed && <span className="whitespace-nowrap">Collapse</span>}
-            {collapsed && (
-              <CollapsedFlyout label="Perluas Navigasi" accent={primaryColor} />
-            )}
-          </button>
-        </div>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className={`w-4 h-4 flex-shrink-0 transition-transform duration-300 ease-out ${collapsed ? 'rotate-180' : ''}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+              </svg>
+              {!collapsed && <span className="whitespace-nowrap">Collapse</span>}
+              {collapsed && (
+                <CollapsedFlyout label="Perluas Navigasi" accent={primaryColor} />
+              )}
+            </button>
+          </div>
+        )}
 
         {/* Footer */}
         <div className={`border-t border-gray-50 space-y-1 transition-all duration-300 ${collapsed ? 'p-2 overflow-visible' : 'p-3'}`}>

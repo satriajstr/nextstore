@@ -363,6 +363,7 @@ export default function Home() {
       setVoucher(0)
       setAmountReceived('')
       setSelectedQuickCash(null)
+      setPaymentMethod('Tunai')
       setShowCheckoutModal(false)
       setShowFullCart(false)
       setSearchTerm('')

@@ -85,7 +85,7 @@ export default function Login() {
         redirectTo: `${window.location.origin}/login?reset=true`,
       })
       if (error) throw error
-      setResetMessage({ type: 'success', text: 'Link reset password telah dikirim ke email Anda. Silakan cek inbox atau spam.' })
+      setResetMessage({ type: 'success', text: 'Link login telah dikirim ke email Anda, silahkan login terlebih dahulu dan lakukan perubahan password Anda setelah login.' })
     } catch (err) {
       setResetMessage({ type: 'error', text: err.message })
     } finally {
@@ -149,25 +149,25 @@ export default function Login() {
           {/* Forgot Password Modal */}
           {showForgotPassword ? (
             <div className="flex flex-col gap-5">
-            <div className="text-center mb-2">
-              <p className="text-lg font-bold text-gray-700">Lupa Password?</p>
-              <p className="text-xs text-gray-400 mt-1">Masukkan email Anda, kami akan mengirim link reset password.</p>
-            </div>
-
-            {resetMessage && (
-              <div className={`p-4 rounded-2xl text-sm font-medium flex items-center gap-3 ${resetMessage.type === 'success' ? 'bg-green-50 border border-green-100 text-green-600' : 'bg-red-50 border border-red-100 text-red-600'}`}>
-                {resetMessage.type === 'success' ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                  </svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                  </svg>
-                )}
-                <span>{resetMessage.text}</span>
+              <div className="text-center mb-2">
+                <p className="text-lg font-bold text-gray-700">Lupa Password?</p>
+                <p className="text-xs text-gray-400 mt-1">Masukkan email Anda, kami akan mengirim link login untuk ganti password setelah Anda berhasil login.</p>
               </div>
-            )}
+
+              {resetMessage && (
+                <div className={`p-4 rounded-2xl text-sm font-medium flex items-center gap-3 ${resetMessage.type === 'success' ? 'bg-green-50 border border-green-100 text-green-600' : 'bg-red-50 border border-red-100 text-red-600'}`}>
+                  {resetMessage.type === 'success' ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                  )}
+                  <span>{resetMessage.text}</span>
+                </div>
+              )}
 
               <form onSubmit={handleResetPassword} className="flex flex-col gap-4">
                 <div>
