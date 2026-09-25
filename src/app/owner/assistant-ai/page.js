@@ -21,11 +21,12 @@ async function fetchAnalytics(storeId, criticalThreshold = 3) {
   const yesterdayStr = formatDateId(yesterday)
 
   // 1. Fetch products — persis seperti produk page
-  const { data: products } = await supabase
+  const { data: allProducts } = await supabase
     .from('products')
     .select('*')
     .eq('store_id', storeId)
     .order('name', { ascending: true })
+  const products = allProducts?.filter(product => !product.archived_at)
 
   // 2. Today transactions
   const { data: todayTrx } = await supabase

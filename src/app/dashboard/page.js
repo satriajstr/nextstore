@@ -283,11 +283,11 @@ export default function Dashboard() {
       : 3
     const { data } = await supabase
       .from('products')
-      .select('id, name, stock, category')
+      .select('*')
       .eq('store_id', profile.store_id)
       .lte('stock', savedThreshold)
       .order('stock', { ascending: true })
-    if (data) setCriticalStock(data)
+    if (data) setCriticalStock(data.filter(product => !product.archived_at))
   }, [profile?.store_id])
 
   useEffect(() => {

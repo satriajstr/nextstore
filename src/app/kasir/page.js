@@ -176,7 +176,7 @@ export default function Home() {
       .order('name', { ascending: true })
 
     if (data) {
-      setProducts(data)
+      setProducts(data.filter(product => !product.archived_at))
     } else if (error) {
       console.error("Error fetching products:", error)
     }
@@ -316,6 +316,21 @@ export default function Home() {
     setProcessing(true)
 
     try {
+      const { data: currentProducts, error: productError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('store_id', profile.store_id)
+        .in('id', cart.map(item => item.id))
+
+      if (productError) throw productError
+      const activeIds = new Set((currentProducts || []).filter(product => !product.archived_at).map(product => product.id))
+      if (cart.some(item => !activeIds.has(item.id))) {
+        setCart(previousCart => previousCart.filter(item => activeIds.has(item.id)))
+        await getData()
+        showToast('Produk yang sudah dihapus dikeluarkan dari keranjang. Periksa total lalu ulangi transaksi.', 'error')
+        return
+      }
+
       // Step 1: Insert Transaction Header
       const { data: trx, error: trxError } = await supabase
         .from('transactions')

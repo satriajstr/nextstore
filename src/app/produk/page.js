@@ -426,7 +426,7 @@ export default function Produk() {
     if (error) {
       showToast('Gagal memuat data produk.', 'error')
     } else {
-      setProducts(data || [])
+      setProducts((data || []).filter(product => !product.archived_at))
     }
     setLoading(false)
   }, [profile?.store_id])
@@ -473,22 +473,30 @@ export default function Produk() {
     const confirmed = await showConfirm({
       icon: '🗑️',
       title: 'Hapus Produk?',
-      message: `"${product.name}" akan dihapus secara permanen.\nData ini tidak bisa dikembalikan.`,
+      message: `"${product.name}" akan dihapus dari daftar produk dan kasir.\nRiwayat transaksi tetap tersimpan.`,
       labelYes: 'Hapus',
       labelNo: 'Batal',
       danger: true,
     })
     if (!confirmed) return
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('products')
-      .delete()
+      .update({ archived_at: new Date().toISOString() })
       .eq('store_id', profile.store_id)
       .eq('id', product.id)
+      .is('archived_at', null)
+      .select('id')
+      .maybeSingle()
     if (error) {
-      showToast('Gagal menghapus produk.', 'error')
+      console.error('Error archiving product:', error)
+      showToast(error.code === '42703' || error.code === 'PGRST204'
+        ? 'Penghapusan belum tersedia. Kolom arsip belum dibuat di database.'
+        : 'Gagal menghapus produk.', 'error')
+    } else if (!data) {
+      showToast('Produk tidak ditemukan atau sudah dihapus.', 'error')
     } else {
-      showToast(`Produk "${product.name}" berhasil dihapus.`)
+      showToast(`Produk "${product.name}" berhasil dihapus dari daftar.`)
       fetchProducts()
     }
   }
