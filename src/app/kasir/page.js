@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
 import { getUserProfile, signOut } from '../../lib/auth'
@@ -95,9 +95,22 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('Semua')
   const [showFullCart, setShowFullCart] = useState(false)
-  const [tappedProductId, setTappedProductId] = useState(null)
+  const [cardFeedback, setCardFeedback] = useState(null) // { id: productId, type: 'add' | 'remove' }
   const [cartFx, setCartFx] = useState(null) // { id, type: 'add' | 'remove' }
   const [exitingCartIds, setExitingCartIds] = useState([])
+
+  // Memoized cart quantity mapping and total quantity
+  const cartQtyMap = useMemo(() => {
+    const map = {}
+    for (const item of cart) {
+      map[item.id] = item.quantity
+    }
+    return map
+  }, [cart])
+
+  const totalCartQty = useMemo(() => {
+    return cart.reduce((acc, item) => acc + item.quantity, 0)
+  }, [cart])
 
   // Customization States
   const [gridCols, setGridCols] = useState(3)
@@ -810,6 +823,29 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {/* Mobile/Tablet Quick Cart Access with live item counter */}
+                  <button
+                    onClick={() => setShowFullCart(true)}
+                    className="md:hidden relative p-2.5 bg-gray-50 text-gray-700 rounded-xl hover:bg-gray-100 transition-all border border-gray-100 shadow-sm active:scale-95"
+                    title="Lihat Keranjang"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                    </svg>
+                    {totalCartQty > 0 && (
+                      <span
+                        key={`header-badge-${totalCartQty}`}
+                        className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full text-[10px] font-black text-white flex items-center justify-center animate-badge-pop shadow-md"
+                        style={{
+                          backgroundColor: primaryColor,
+                          boxShadow: `0 2px 8px rgba(var(--primary-rgb), 0.45)`,
+                        }}
+                      >
+                        {totalCartQty}
+                      </span>
+                    )}
+                  </button>
+
                   {/* Settings Toggle */}
                   <div className="relative">
                     <button
@@ -964,39 +1000,94 @@ export default function Home() {
                 key={selectedCategory}
                 className={`grid gap-4 ${gridCols === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}
               >
-                {filteredProducts.map((product) => (
-                  <button
-                    key={product.id}
-                    disabled={processing}
-                    onClick={() => {
-                      addToCart(product)
-                      setTappedProductId(product.id)
-                      setTimeout(() => setTappedProductId(null), 600)
-                    }}
-                    className="flex flex-col p-5 bg-white rounded-3xl shadow-sm border border-gray-100 hover:border-pink-200 hover:shadow-xl hover:shadow-pink-50/50 transition-all active:scale-95 text-left h-40 disabled:opacity-50 group overflow-hidden relative"
-                  >
-                    <div className="flex flex-col gap-1.5 items-start relative z-10">
-                      <span className="text-[9px] bg-pink-50 text-pink-500 px-2.5 py-0.5 rounded-full font-medium uppercase tracking-widest">
-                        {product.category || 'Umum'}
-                      </span>
-                      <span
-                        className="font-semibold text-gray-800 line-clamp-2 leading-snug group-hover:text-pink-600 transition-colors"
-                        style={{ fontSize: `${itemFontSize}px` }}
-                      >
-                        {product.name}
-                      </span>
-                    </div>
-                    <div className="mt-auto relative z-10">
-                      <span className="text-pink-500 font-bold block text-lg">{formatIDR(product.harga_jual)}</span>
-                    </div>
-                    {/* Add-to-cart feedback overlay */}
-                    {tappedProductId === product.id && (
-                      <div className="absolute inset-0 z-20 flex items-center justify-center bg-pink-500/10 rounded-3xl animate-cart-ping">
-                        <span className="text-pink-500 font-bold text-lg animate-cart-float">+1</span>
+                {filteredProducts.map((product) => {
+                  const qtyInCart = cartQtyMap[product.id] || 0
+                  const isInCart = qtyInCart > 0
+
+                  return (
+                    <button
+                      key={product.id}
+                      disabled={processing}
+                      onClick={() => {
+                        addToCart(product)
+                        setCardFeedback({ id: product.id, type: 'add' })
+                        setTimeout(() => setCardFeedback(null), 600)
+                      }}
+                      className={`flex flex-col p-5 rounded-3xl transition-all pos-product-card text-left h-40 disabled:opacity-50 group overflow-hidden relative ${
+                        isInCart
+                          ? 'bg-pink-50 border-2 border-pink-500 shadow-md shadow-pink-100'
+                          : 'bg-white shadow-sm border border-gray-100 hover:border-pink-200 hover:shadow-xl hover:shadow-pink-50/50'
+                      }`}
+                    >
+                      {/* Floating Capsule: Minus Button | Divider | Total Qty */}
+                      {isInCart && (
+                        <div className="absolute top-3 right-3 z-30 flex items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.08)] ring-1 ring-black/[0.04] overflow-hidden select-none">
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            title="Kurangi 1 item"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onTouchStart={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              removeFromCart(product.id)
+                              setCardFeedback({ id: product.id, type: 'remove' })
+                              setTimeout(() => setCardFeedback(null), 600)
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.stopPropagation()
+                                removeFromCart(product.id)
+                                setCardFeedback({ id: product.id, type: 'remove' })
+                                setTimeout(() => setCardFeedback(null), 600)
+                              }
+                            }}
+                            className="capsule-minus w-9 h-8 flex items-center justify-center cursor-pointer hover:bg-gray-50/80 transition-colors"
+                          >
+                            <span className="w-4 h-[2.5px] bg-red-400 rounded-full inline-block"></span>
+                          </span>
+                          <div className="w-[1px] h-4 bg-pink-200"></div>
+                          <div
+                            className="min-w-[28px] px-3 h-8 flex items-center justify-center font-bold text-base select-none leading-none"
+                            style={{ color: primaryColor }}
+                          >
+                            {qtyInCart}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className={`flex flex-col gap-1.5 items-start relative z-10 ${isInCart ? 'pr-20' : ''}`}>
+                        <span className={`text-[9px] px-2.5 py-0.5 rounded-full font-medium uppercase tracking-widest ${
+                          isInCart ? 'bg-pink-100 text-pink-500' : 'bg-pink-50 text-pink-500'
+                        }`}>
+                          {product.category || 'Umum'}
+                        </span>
+                        <span
+                          className="font-semibold text-gray-800 line-clamp-2 leading-snug group-hover:text-pink-600 transition-colors"
+                          style={{ fontSize: `${itemFontSize}px` }}
+                        >
+                          {product.name}
+                        </span>
                       </div>
-                    )}
-                  </button>
-                ))}
+                      <div className="mt-auto relative z-10">
+                        <span className="text-pink-500 font-bold block text-lg">{formatIDR(product.harga_jual)}</span>
+                      </div>
+                      {/* Add / Remove feedback overlay */}
+                      {cardFeedback?.id === product.id && (
+                        <div className={`absolute inset-0 z-20 flex items-center justify-center rounded-3xl animate-cart-ping pointer-events-none ${
+                          cardFeedback.type === 'remove' ? 'bg-red-500/10' : 'bg-pink-500/10'
+                        }`}>
+                          <span className={`font-black text-2xl animate-cart-float select-none ${
+                            cardFeedback.type === 'remove' ? 'text-red-500/75' : 'text-pink-500'
+                          }`}>
+                            {cardFeedback.type === 'remove' ? '-1' : '+1'}
+                          </span>
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -1014,8 +1105,15 @@ export default function Home() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
               </svg>
               <span>Keranjang</span>
-              <span className="bg-pink-100 text-pink-600 text-xs px-3 py-1 rounded-full font-bold animate-bounce">
-                {cart.reduce((a, b) => a + b.quantity, 0)} Item
+              <span
+                key={`cart-header-qty-${totalCartQty}`}
+                className="text-xs px-3 py-1 rounded-full font-bold animate-badge-pop shadow-xs"
+                style={{
+                  backgroundColor: 'rgba(var(--primary-rgb), 0.12)',
+                  color: primaryColor,
+                }}
+              >
+                {totalCartQty} Item
               </span>
             </h2>
             <div className="flex gap-4 items-center">
@@ -1056,13 +1154,6 @@ export default function Home() {
                         ? 'opacity-0 translate-y-8 scale-[0.96] max-h-0 !pb-0 !mb-0 pointer-events-none'
                         : 'opacity-100 translate-y-0 scale-100 max-h-24 animate-slide-in'}`}
                   >
-                    {cartFx?.id === item.id && (
-                      <div className="absolute inset-0 z-20 flex items-center justify-center bg-pink-500/10 rounded-2xl animate-cart-ping">
-                        <span className="text-pink-500 font-bold text-lg animate-cart-float">
-                          {cartFx.type === 'remove' ? '-1' : '+1'}
-                        </span>
-                      </div>
-                    )}
                     <div className="flex items-center gap-2.5 flex-1 min-w-0">
                       <button
                         disabled={processing}
@@ -1185,8 +1276,14 @@ export default function Home() {
             className="w-full bg-gradient-to-r from-gray-900 to-gray-800 text-white px-5 py-4 rounded-2xl shadow-2xl shadow-black/20 flex justify-between items-center active:scale-[0.97] transition-all duration-150 border border-white/5"
           >
             <div className="flex items-center gap-3">
-              <div className="bg-pink-500 w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm shadow-lg shadow-pink-500/30">
-                {cart.reduce((a, b) => a + b.quantity, 0)}
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm text-white shadow-lg select-none"
+                style={{
+                  backgroundColor: primaryColor,
+                  boxShadow: `0 4px 14px rgba(var(--primary-rgb), 0.35)`,
+                }}
+              >
+                {totalCartQty}
               </div>
               <div className="text-left">
                 <p className="text-[9px] text-gray-400 uppercase font-medium tracking-widest">Total</p>
