@@ -148,6 +148,9 @@ export function ThemeProvider({ children }) {
     .bg-pink-600               { background-color: ${darker} !important; }
     .bg-pink-50                { background-color: ${primaryLighter} !important; }
     .bg-pink-100               { background-color: ${primaryLight} !important; }
+    .bg-pink-500\\/10           { background-color: rgba(${rgb}, 0.1) !important; }
+    .bg-pink-500\\/20           { background-color: rgba(${rgb}, 0.2) !important; }
+    .bg-pink-500\\/5            { background-color: rgba(${rgb}, 0.05) !important; }
 
     /* ── Hover backgrounds ───────────────────────────── */
     .hover\\:bg-pink-500:hover  { background-color: ${primaryColor} !important; }

@@ -139,12 +139,62 @@ body {
   }
 }
 
+/* Modern smooth float for +1 / -1 feedback */
+@keyframes cartFloatSmooth {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0) scale(0.75);
+  }
+
+  25% {
+    opacity: 1;
+    transform: translate3d(0, -6px, 0) scale(1.08);
+  }
+
+  65% {
+    opacity: 1;
+    transform: translate3d(0, -18px, 0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -32px, 0) scale(0.92);
+  }
+}
+
+/* Tactile badge pop when quantity updates */
+@keyframes badgePop {
+  0% {
+    transform: scale(0.65);
+  }
+
+  45% {
+    transform: scale(1.24);
+  }
+
+  75% {
+    transform: scale(0.94);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
 .animate-cart-ping {
   animation: cartPing 0.55s ease-out forwards;
 }
 
 .animate-cart-float {
   animation: cartFloat 0.55s ease-out forwards;
+}
+
+.animate-cart-float-smooth {
+  animation: cartFloatSmooth 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-badge-pop {
+  animation: badgePop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 /* Hide scrollbar but keep scrollable */
@@ -155,4 +205,13 @@ body {
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* POS product card active scale (only when card is tapped, not on capsule actions or delete button) */
+.pos-product-card:active:not(:has(.capsule-minus:active, .capsule-action:active, .capsule-plus:active, .no-card-scale:active)) {
+  transform: scale(0.95);
+}
+
+.pos-product-card:has(.capsule-minus:active, .capsule-action:active, .capsule-plus:active, .no-card-scale:active) {
+  transform: none !important;
 }
