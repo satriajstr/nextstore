@@ -96,6 +96,7 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState('Semua')
   const [showFullCart, setShowFullCart] = useState(false)
   const [cardFeedback, setCardFeedback] = useState(null) // { id: productId, type: 'add' | 'remove' }
+  const [holdHint, setHoldHint] = useState(null) // null | 'add' | 'remove'
   const [cartFx, setCartFx] = useState(null) // { id, type: 'add' | 'remove' }
   const [exitingCartIds, setExitingCartIds] = useState([])
 
@@ -290,6 +291,197 @@ export default function Home() {
       )
     )
   }
+
+  // Holding (Hold-to-Repeat) Logic (10 qty/s initially, accelerates to 20 qty/s after 3s)
+  const holdTimerRef = useRef(null)
+  const holdAccelTimerRef = useRef(null)
+  const holdIntervalRef = useRef(null)
+  const hasHeldRef = useRef(false)
+  const touchStartPosRef = useRef({ x: 0, y: 0 })
+
+  const stopHolding = useCallback(() => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current)
+      holdTimerRef.current = null
+    }
+    if (holdAccelTimerRef.current) {
+      clearTimeout(holdAccelTimerRef.current)
+      holdAccelTimerRef.current = null
+    }
+    if (holdIntervalRef.current) {
+      clearInterval(holdIntervalRef.current)
+      holdIntervalRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => stopHolding()
+  }, [stopHolding])
+
+  const startCardHold = (e, product) => {
+    if (processing) return
+    hasHeldRef.current = false
+    touchStartPosRef.current = { x: e.clientX, y: e.clientY }
+    stopHolding()
+
+    const stepAdd = () => {
+      setCart((prevCart) => {
+        const existing = prevCart.find((it) => it.id === product.id)
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate(8)
+        }
+        if (existing) {
+          return prevCart.map((it) =>
+            it.id === product.id ? { ...it, quantity: it.quantity + 1 } : it
+          )
+        }
+        return [
+          ...prevCart,
+          {
+            id: product.id,
+            name: product.name,
+            harga_jual: product.harga_jual,
+            quantity: 1,
+          },
+        ]
+      })
+    }
+
+    // Phase 1 starts after ~800ms initial hold delay
+    holdTimerRef.current = setTimeout(() => {
+      hasHeldRef.current = true
+      markHoldLearned()
+
+      // Phase 1 speed: 10 qty/s (100ms interval)
+      holdIntervalRef.current = setInterval(stepAdd, 100)
+
+      // Phase 2: After 3 seconds total hold (2200ms after Phase 1 begins), accelerate to 20 qty/s (50ms interval)
+      holdAccelTimerRef.current = setTimeout(() => {
+        if (holdIntervalRef.current) clearInterval(holdIntervalRef.current)
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate([15, 30, 15]) // Taktil signal perpindahan ke turbo speed
+        }
+        holdIntervalRef.current = setInterval(stepAdd, 50)
+      }, 2200)
+    }, 800)
+  }
+
+  const startMinusHold = (e, productId) => {
+    e.stopPropagation()
+    hasHeldRef.current = false
+    touchStartPosRef.current = { x: e.clientX, y: e.clientY }
+    stopHolding()
+
+    const stepRemove = () => {
+      setCart((prevCart) => {
+        const item = prevCart.find((it) => it.id === productId)
+        if (!item) {
+          stopHolding()
+          return prevCart
+        }
+        if (item.quantity <= 1) {
+          stopHolding()
+          return prevCart.filter((it) => it.id !== productId)
+        }
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate(8)
+        }
+        return prevCart.map((it) =>
+          it.id === productId ? { ...it, quantity: it.quantity - 1 } : it
+        )
+      })
+    }
+
+    // Phase 1 starts after ~800ms initial hold delay
+    holdTimerRef.current = setTimeout(() => {
+      hasHeldRef.current = true
+      markHoldLearned()
+
+      // Phase 1 speed: 10 qty/s (100ms interval)
+      holdIntervalRef.current = setInterval(stepRemove, 100)
+
+      // Phase 2: After 3 seconds total hold (2200ms after Phase 1 begins), accelerate to 20 qty/s (50ms interval)
+      holdAccelTimerRef.current = setTimeout(() => {
+        if (holdIntervalRef.current) clearInterval(holdIntervalRef.current)
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate([15, 30, 15]) // Taktil signal perpindahan ke turbo speed
+        }
+        holdIntervalRef.current = setInterval(stepRemove, 50)
+      }, 2200)
+    }, 800)
+  }
+
+  const startPlusHold = (e, product) => {
+    e.stopPropagation()
+    startCardHold(e, product)
+  }
+
+  const handlePointerMove = (e) => {
+    const dx = e.clientX - touchStartPosRef.current.x
+    const dy = e.clientY - touchStartPosRef.current.y
+    if (Math.hypot(dx, dy) > 10) {
+      stopHolding()
+    }
+  }
+
+  // ─── Hold Hint: deteksi tap beruntun, beri tahu kasir soal fitur hold ───
+  const RAPID_TAP_THRESHOLD = 5 // jumlah tap beruntun sebelum hint muncul
+  const RAPID_TAP_GAP_MS = 700 // jeda maks antar tap agar dihitung beruntun
+  const HINT_COOLDOWN_MS = 45_000 // jeda sebelum hint boleh muncul lagi
+  const HINT_MAX_SHOWS = 3 // setelah 3x ditampilkan, anggap kasir sudah tahu
+
+  const rapidTapRef = useRef({ key: null, count: 0, last: 0 })
+  const hintLastShownRef = useRef(0)
+  const hintHideTimerRef = useRef(null)
+
+  const isHoldLearned = () => {
+    if (typeof window === 'undefined') return true
+    if (localStorage.getItem('pos_hold_learned') === 'true') return true
+    return parseInt(localStorage.getItem('pos_hold_hint_count') || '0') >= HINT_MAX_SHOWS
+  }
+
+  const dismissHoldHint = useCallback(() => {
+    if (hintHideTimerRef.current) clearTimeout(hintHideTimerRef.current)
+    setHoldHint(null)
+  }, [])
+
+  function markHoldLearned() {
+    if (typeof window !== 'undefined') localStorage.setItem('pos_hold_learned', 'true')
+    dismissHoldHint()
+  }
+
+  const trackRapidTap = (productId, type) => {
+    const now = Date.now()
+    const key = `${type}-${productId}`
+    const r = rapidTapRef.current
+
+    if (r.key === key && now - r.last <= RAPID_TAP_GAP_MS) {
+      r.count += 1
+    } else {
+      r.key = key
+      r.count = 1
+    }
+    r.last = now
+
+    if (r.count < RAPID_TAP_THRESHOLD) return
+    if (isHoldLearned()) return
+    if (now - hintLastShownRef.current < HINT_COOLDOWN_MS) return
+
+    hintLastShownRef.current = now
+    r.count = 0
+    const shown = parseInt(localStorage.getItem('pos_hold_hint_count') || '0') + 1
+    localStorage.setItem('pos_hold_hint_count', String(shown))
+
+    setHoldHint(type)
+    if (hintHideTimerRef.current) clearTimeout(hintHideTimerRef.current)
+    hintHideTimerRef.current = setTimeout(() => setHoldHint(null), 4500)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (hintHideTimerRef.current) clearTimeout(hintHideTimerRef.current)
+    }
+  }, [])
 
   // 4. Calculations & Formatter
   const totalHarga = cart.reduce((acc, item) => acc + (item.harga_jual * item.quantity), 0)
@@ -1009,29 +1201,64 @@ export default function Home() {
                       key={product.id}
                       disabled={processing}
                       onClick={() => {
+                        if (hasHeldRef.current) {
+                          hasHeldRef.current = false
+                          return
+                        }
                         addToCart(product)
+                        trackRapidTap(product.id, 'add')
                         setCardFeedback({ id: product.id, type: 'add' })
                         setTimeout(() => setCardFeedback(null), 600)
                       }}
+                      onPointerDown={(e) => startCardHold(e, product)}
+                      onPointerUp={() => stopHolding()}
+                      onPointerLeave={() => stopHolding()}
+                      onPointerCancel={() => stopHolding()}
+                      onPointerMove={handlePointerMove}
                       className={`flex flex-col p-5 rounded-3xl transition-all pos-product-card text-left h-40 disabled:opacity-50 group overflow-hidden relative ${
                         isInCart
-                          ? 'bg-pink-50 border-2 border-pink-500 shadow-md shadow-pink-100'
-                          : 'bg-white shadow-sm border border-gray-100 hover:border-pink-200 hover:shadow-xl hover:shadow-pink-50/50'
+                          ? 'border-2 shadow-md'
+                          : 'bg-white shadow-sm border border-gray-100 hover:shadow-xl'
                       }`}
+                      style={
+                        isInCart
+                          ? {
+                              backgroundColor: `${primaryColor}0f`,
+                              borderColor: primaryColor,
+                              boxShadow: `0 4px 14px ${primaryColor}25`,
+                            }
+                          : {}
+                      }
                     >
-                      {/* Floating Capsule: Minus Button | Divider | Total Qty */}
+                      {/* Floating Stepper Capsule: [-] | [qty] | [+] */}
                       {isInCart && (
                         <div className="absolute top-3 right-3 z-30 flex items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.08)] ring-1 ring-black/[0.04] overflow-hidden select-none">
+                          {/* Decrement 1 (-) */}
                           <span
                             role="button"
                             tabIndex={0}
                             title="Kurangi 1 item"
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onTouchStart={(e) => e.stopPropagation()}
-                            onMouseDown={(e) => e.stopPropagation()}
+                            onPointerDown={(e) => startMinusHold(e, product.id)}
+                            onPointerUp={(e) => {
+                              e.stopPropagation()
+                              stopHolding()
+                            }}
+                            onPointerLeave={(e) => {
+                              e.stopPropagation()
+                              stopHolding()
+                            }}
+                            onPointerCancel={(e) => {
+                              e.stopPropagation()
+                              stopHolding()
+                            }}
                             onClick={(e) => {
                               e.stopPropagation()
+                              if (hasHeldRef.current) {
+                                hasHeldRef.current = false
+                                return
+                              }
                               removeFromCart(product.id)
+                              trackRapidTap(product.id, 'remove')
                               setCardFeedback({ id: product.id, type: 'remove' })
                               setTimeout(() => setCardFeedback(null), 600)
                             }}
@@ -1043,44 +1270,164 @@ export default function Home() {
                                 setTimeout(() => setCardFeedback(null), 600)
                               }
                             }}
-                            className="capsule-minus w-9 h-8 flex items-center justify-center cursor-pointer hover:bg-gray-50/80 transition-colors"
+                            className="capsule-minus capsule-action no-card-scale w-8 h-8 flex items-center justify-center cursor-pointer hover:bg-gray-50/80 transition-colors select-none"
                           >
-                            <span className="w-4 h-[2.5px] bg-red-400 rounded-full inline-block"></span>
+                            <span
+                              className="w-3.5 h-[2px] rounded-full inline-block transition-opacity hover:opacity-100"
+                              style={{ backgroundColor: primaryColor, opacity: 0.85 }}
+                            ></span>
                           </span>
-                          <div className="w-[1px] h-4 bg-pink-200"></div>
+
+                          {/* Divider between - and quantity */}
                           <div
-                            className="min-w-[28px] px-3 h-8 flex items-center justify-center font-bold text-base select-none leading-none"
+                            className="w-[1px] h-4"
+                            style={{ backgroundColor: primaryColor, opacity: 0.25 }}
+                          ></div>
+
+                          {/* Total Qty */}
+                          <div
+                            className="min-w-[28px] px-2.5 h-8 flex items-center justify-center font-bold text-base select-none leading-none"
                             style={{ color: primaryColor }}
                           >
                             {qtyInCart}
                           </div>
+
+                          {/* Divider between quantity and + */}
+                          <div
+                            className="w-[1px] h-4"
+                            style={{ backgroundColor: primaryColor, opacity: 0.25 }}
+                          ></div>
+
+                          {/* Increment 1 (+) */}
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            title="Tambah 1 item"
+                            onPointerDown={(e) => startPlusHold(e, product)}
+                            onPointerUp={(e) => {
+                              e.stopPropagation()
+                              stopHolding()
+                            }}
+                            onPointerLeave={(e) => {
+                              e.stopPropagation()
+                              stopHolding()
+                            }}
+                            onPointerCancel={(e) => {
+                              e.stopPropagation()
+                              stopHolding()
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (hasHeldRef.current) {
+                                hasHeldRef.current = false
+                                return
+                              }
+                              addToCart(product)
+                              trackRapidTap(product.id, 'add')
+                              setCardFeedback({ id: product.id, type: 'add' })
+                              setTimeout(() => setCardFeedback(null), 600)
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.stopPropagation()
+                                addToCart(product)
+                                setCardFeedback({ id: product.id, type: 'add' })
+                                setTimeout(() => setCardFeedback(null), 600)
+                              }
+                            }}
+                            className="capsule-minus capsule-action no-card-scale w-8 h-8 flex items-center justify-center cursor-pointer hover:bg-gray-50/80 transition-colors select-none"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="w-4 h-4 transition-opacity hover:opacity-100"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              strokeWidth={2.8}
+                              stroke="currentColor"
+                              style={{ color: primaryColor, opacity: 0.85 }}
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                            </svg>
+                          </span>
                         </div>
                       )}
 
-                      <div className={`flex flex-col gap-1.5 items-start relative z-10 ${isInCart ? 'pr-20' : ''}`}>
-                        <span className={`text-[9px] px-2.5 py-0.5 rounded-full font-medium uppercase tracking-widest ${
-                          isInCart ? 'bg-pink-100 text-pink-500' : 'bg-pink-50 text-pink-500'
-                        }`}>
+                      <div className={`flex flex-col items-start relative z-10 ${isInCart ? 'pr-32' : ''}`}>
+                        {/* x button (at top) */}
+                        {isInCart && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            title="Hapus semua dari keranjang"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onTouchStart={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              stopHolding()
+                              setCart((prev) => prev.filter((item) => item.id !== product.id))
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.stopPropagation()
+                                stopHolding()
+                                setCart((prev) => prev.filter((item) => item.id !== product.id))
+                              }
+                            }}
+                            className="capsule-minus capsule-action no-card-scale flex items-center justify-center cursor-pointer transition-transform hover:scale-110 active:scale-90 select-none shrink-0 -ml-0.5 -mt-1 mb-1 p-0.5"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="w-[20px] h-[20px] transition-all hover:brightness-75"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              strokeWidth={3}
+                              stroke="currentColor"
+                              style={{ color: primaryColor, filter: 'brightness(0.8)' }}
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </span>
+                        )}
+
+                        {/* Jenis Produk (below x) */}
+                        <span
+                          className="text-[9px] px-2.5 py-0.5 rounded-full font-medium uppercase tracking-widest truncate mb-1"
+                          style={{
+                            backgroundColor: `${primaryColor}18`,
+                            color: primaryColor,
+                          }}
+                        >
                           {product.category || 'Umum'}
                         </span>
+
+                        {/* Product Name */}
                         <span
-                          className="font-semibold text-gray-800 line-clamp-2 leading-snug group-hover:text-pink-600 transition-colors"
+                          className="font-semibold text-gray-800 line-clamp-2 leading-snug transition-colors"
                           style={{ fontSize: `${itemFontSize}px` }}
                         >
                           {product.name}
                         </span>
                       </div>
                       <div className="mt-auto relative z-10">
-                        <span className="text-pink-500 font-bold block text-lg">{formatIDR(product.harga_jual)}</span>
+                        <span className="font-bold block text-lg" style={{ color: primaryColor }}>
+                          {formatIDR(product.harga_jual)}
+                        </span>
                       </div>
                       {/* Add / Remove feedback overlay */}
                       {cardFeedback?.id === product.id && (
-                        <div className={`absolute inset-0 z-20 flex items-center justify-center rounded-3xl animate-cart-ping pointer-events-none ${
-                          cardFeedback.type === 'remove' ? 'bg-red-500/10' : 'bg-pink-500/10'
-                        }`}>
-                          <span className={`font-black text-2xl animate-cart-float select-none ${
-                            cardFeedback.type === 'remove' ? 'text-red-500/75' : 'text-pink-500'
-                          }`}>
+                        <div
+                          className="absolute inset-0 z-20 flex items-center justify-center rounded-3xl animate-cart-ping pointer-events-none"
+                          style={{
+                            backgroundColor: cardFeedback.type === 'remove' ? 'rgba(239, 68, 68, 0.12)' : `${primaryColor}22`,
+                          }}
+                        >
+                          <span
+                            className="font-black text-2xl animate-cart-float select-none"
+                            style={{
+                              color: cardFeedback.type === 'remove' ? 'rgba(239, 68, 68, 0.85)' : primaryColor,
+                            }}
+                          >
                             {cardFeedback.type === 'remove' ? '-1' : '+1'}
                           </span>
                         </div>
@@ -1267,6 +1614,38 @@ export default function Home() {
           </div>
         </section>
       </main>
+
+      {/* HOLD HINT (muncul saat kasir tap beruntun) */}
+      {holdHint && !showFullCart && (
+        <div
+          className={`fixed left-0 right-0 z-[55] flex justify-center px-4 pointer-events-none md:w-3/5 ${
+            cart.length > 0 ? 'bottom-28 md:bottom-8' : 'bottom-8'
+          }`}
+        >
+          <div
+            role="status"
+            className="pointer-events-auto animate-fade-in flex items-center gap-2.5 bg-gray-900/95 backdrop-blur-md text-white pl-3 pr-2 py-2 rounded-2xl shadow-xl shadow-black/25 border border-white/10 max-w-sm"
+          >
+            <div
+              className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: holdHint === 'remove' ? 'rgba(248,113,113,0.2)' : `${primaryColor}30` }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 ${holdHint === 'remove' ? 'text-red-300' : 'text-white'}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.05 4.575a1.575 1.575 0 1 0-3.15 0v3m3.15-3v-1.5a1.575 1.575 0 0 1 3.15 0v1.5m-3.15 0 .075 5.925m3.075.75V4.575m0 0a1.575 1.575 0 0 1 3.15 0V15M6.9 7.575a1.575 1.575 0 1 0-3.15 0v8.175a6.75 6.75 0 0 0 6.75 6.75h2.018a5.25 5.25 0 0 0 3.712-1.538l1.732-1.732a5.25 5.25 0 0 0 1.538-3.712l.003-2.024a.668.668 0 0 1 .198-.471 1.575 1.575 0 1 0-2.228-2.228 3.818 3.818 0 0 0-1.12 2.687M6.9 7.575V12m6.27 4.318A4.49 4.49 0 0 1 16.35 15m.002 0h-.002" />
+              </svg>
+            </div>
+            <p className="text-[12px] font-medium leading-snug text-left min-w-0">
+              Tahan untuk {holdHint === 'remove' ? 'mengurangi' : 'menambah'} jumlah item lebih cepat
+            </p>
+            <button
+              onClick={markHoldLearned}
+              className="ml-auto px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex-shrink-0"
+            >
+              Oke
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* MOBILE FLOATING CART TRIGGER */}
       {cart.length > 0 && !showFullCart && (

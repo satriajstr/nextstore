@@ -207,11 +207,11 @@ body {
   scrollbar-width: none;
 }
 
-/* POS product card active scale (only when card is tapped, not on capsule minus) */
-.pos-product-card:active:not(:has(.capsule-minus:active)) {
+/* POS product card active scale (only when card is tapped, not on capsule actions or delete button) */
+.pos-product-card:active:not(:has(.capsule-minus:active, .capsule-action:active, .capsule-plus:active, .no-card-scale:active)) {
   transform: scale(0.95);
 }
 
-.pos-product-card:has(.capsule-minus:active) {
+.pos-product-card:has(.capsule-minus:active, .capsule-action:active, .capsule-plus:active, .no-card-scale:active) {
   transform: none !important;
 }
