@@ -95,23 +95,57 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('Semua')
   const [showFullCart, setShowFullCart] = useState(false)
-  const [cardFeedback, setCardFeedback] = useState(null) // { id: productId, type: 'add' | 'remove' }
+  const [feedbacks, setFeedbacks] = useState({}) // { [productId]: { type: 'add' | 'remove', key: number } }
+  const feedbackTimersRef = useRef({})
+
+  const triggerCardFeedback = useCallback((productId, type) => {
+    if (feedbackTimersRef.current[productId]) {
+      clearTimeout(feedbackTimersRef.current[productId])
+    }
+    const feedbackKey = Date.now() + Math.random()
+    setFeedbacks((prev) => ({
+      ...prev,
+      [productId]: { type, key: feedbackKey },
+    }))
+
+    feedbackTimersRef.current[productId] = setTimeout(() => {
+      setFeedbacks((prev) => {
+        if (!prev[productId] || prev[productId].key !== feedbackKey) return prev
+        const next = { ...prev }
+        delete next[productId]
+        return next
+      })
+      delete feedbackTimersRef.current[productId]
+    }, 500)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      Object.values(feedbackTimersRef.current).forEach(clearTimeout)
+    }
+  }, [])
+
   const [holdHint, setHoldHint] = useState(null) // null | 'add' | 'remove'
   const [cartFx, setCartFx] = useState(null) // { id, type: 'add' | 'remove' }
   const [exitingCartIds, setExitingCartIds] = useState([])
 
-  // Memoized cart quantity mapping and total quantity
+  // Memoized cart quantity mapping and total quantity (excluding items currently exiting)
   const cartQtyMap = useMemo(() => {
     const map = {}
     for (const item of cart) {
-      map[item.id] = item.quantity
+      if (!exitingCartIds.includes(item.id)) {
+        map[item.id] = item.quantity
+      }
     }
     return map
-  }, [cart])
+  }, [cart, exitingCartIds])
 
   const totalCartQty = useMemo(() => {
-    return cart.reduce((acc, item) => acc + item.quantity, 0)
-  }, [cart])
+    return cart.reduce((acc, item) => {
+      if (exitingCartIds.includes(item.id)) return acc
+      return acc + item.quantity
+    }, 0)
+  }, [cart, exitingCartIds])
 
   // Customization States
   const [gridCols, setGridCols] = useState(3)
@@ -235,6 +269,7 @@ export default function Home() {
 
   // 2. Add to Cart Logic
   const addToCart = (product) => {
+    setExitingCartIds((prev) => prev.filter((id) => id !== product.id))
     setCart((prevCart) => {
       const existingItem = prevCart.find((item) => item.id === product.id)
 
@@ -258,7 +293,7 @@ export default function Home() {
     })
   }
 
-  const CART_ROW_TRANSITION_MS = 550
+  const CART_ROW_TRANSITION_MS = 250
 
   const removeCartItemCompletely = (productId) => {
     triggerCartFx(productId, 'remove')
@@ -484,7 +519,12 @@ export default function Home() {
   }, [])
 
   // 4. Calculations & Formatter
-  const totalHarga = cart.reduce((acc, item) => acc + (item.harga_jual * item.quantity), 0)
+  const totalHarga = useMemo(() => {
+    return cart.reduce((acc, item) => {
+      if (exitingCartIds.includes(item.id)) return acc
+      return acc + (item.harga_jual * item.quantity)
+    }, 0)
+  }, [cart, exitingCartIds])
 
   const formatIDR = (amount) => {
     return new Intl.NumberFormat('id-ID', {
@@ -502,7 +542,7 @@ export default function Home() {
 
   const kembalian = Math.max(0, (parseInt(amountReceived) || 0) - totalTagihan)
 
-  // 5. Finalize Checkout
+  // 5. Finalize Checkout (Optimized Safe Transaction Flow)
   const handleFinalizeCheckout = async () => {
     if (cart.length === 0) return
     if (isClosed) {
@@ -521,22 +561,23 @@ export default function Home() {
     setProcessing(true)
 
     try {
+      // Step 1: Lightweight validation query (minimal payload: id, stock, archived_at)
       const { data: currentProducts, error: productError } = await supabase
         .from('products')
-        .select('*')
+        .select('id, stock, archived_at')
         .eq('store_id', profile.store_id)
         .in('id', cart.map(item => item.id))
 
       if (productError) throw productError
-      const activeIds = new Set((currentProducts || []).filter(product => !product.archived_at).map(product => product.id))
-      if (cart.some(item => !activeIds.has(item.id))) {
-        setCart(previousCart => previousCart.filter(item => activeIds.has(item.id)))
-        await getData()
+      const activeMap = new Map((currentProducts || []).filter(p => !p.archived_at).map(p => [p.id, p]))
+      if (cart.some(item => !activeMap.has(item.id))) {
+        setCart(previousCart => previousCart.filter(item => activeMap.has(item.id)))
+        getData().catch(err => console.error(err))
         showToast('Produk yang sudah dihapus dikeluarkan dari keranjang. Periksa total lalu ulangi transaksi.', 'error')
         return
       }
 
-      // Step 1: Insert Transaction Header
+      // Step 2: Insert Transaction Header
       const { data: trx, error: trxError } = await supabase
         .from('transactions')
         .insert([{
@@ -545,12 +586,12 @@ export default function Home() {
           payment_method: paymentMethod,
           store_id: profile.store_id
         }])
-        .select()
+        .select('id')
         .single()
 
       if (trxError) throw trxError
 
-      // Step 2: Prepare & Insert Transaction Items
+      // Step 3: Insert Transaction Items + Update Product Stocks in PARALLEL
       const items = cart.map(item => ({
         transaction_id: trx.id,
         product_id: item.id,
@@ -559,16 +600,14 @@ export default function Home() {
         store_id: profile.store_id
       }))
 
-      const { error: itemError } = await supabase
+      const itemsInsertPromise = supabase
         .from('transaction_items')
         .insert(items)
 
-      if (itemError) throw itemError
-
-      // Step 3: Update Product Stock
-      const stockUpdates = cart.map(async (item) => {
-        const product = products.find(p => p.id === item.id)
-        const newStock = (product.stock || 0) - item.quantity
+      const stockUpdatePromises = cart.map(item => {
+        const dbProd = activeMap.get(item.id)
+        const baseStock = dbProd ? dbProd.stock : (products.find(p => p.id === item.id)?.stock || 0)
+        const newStock = Math.max(0, (baseStock || 0) - item.quantity)
 
         return supabase
           .from('products')
@@ -576,10 +615,30 @@ export default function Home() {
           .eq('id', item.id)
       })
 
-      await Promise.all(stockUpdates)
+      const [itemsResult, ...stockResults] = await Promise.all([
+        itemsInsertPromise,
+        ...stockUpdatePromises
+      ])
 
-      // Success Flow
+      if (itemsResult.error) throw itemsResult.error
+      for (const res of stockResults) {
+        if (res.error) throw res.error
+      }
+
+      // Step 4: Optimistic update of local product stock for immediate UI responsiveness
+      setProducts(prevProducts =>
+        prevProducts.map(p => {
+          const itemInCart = cart.find(ci => ci.id === p.id)
+          if (!itemInCart) return p
+          const dbProd = activeMap.get(p.id)
+          const baseStock = dbProd ? dbProd.stock : p.stock
+          return { ...p, stock: Math.max(0, (baseStock || 0) - itemInCart.quantity) }
+        })
+      )
+
+      // Step 5: Success Flow - close modal and reset cart immediately
       setCart([])
+      setExitingCartIds([])
       setVoucher(0)
       setAmountReceived('')
       setSelectedQuickCash(null)
@@ -588,8 +647,10 @@ export default function Home() {
       setShowFullCart(false)
       setSearchTerm('')
       setSelectedCategory('Semua')
-      await getData()
       showToast('Transaksi berhasil!', 'success')
+
+      // Step 6: Non-blocking background sync for catalog freshness
+      getData().catch(err => console.error('Background product refresh error:', err))
 
     } catch (error) {
       console.error("CHECKOUT ERROR:", error)
@@ -986,7 +1047,7 @@ export default function Home() {
           className="w-full md:w-3/5 border-r border-gray-200"
         >
 
-          <div className="sticky top-0 z-40 bg-white/70 backdrop-blur-md p-4 md:p-8 border-b border-gray-100/50">
+          <div className="sticky top-0 z-40 bg-white/70 backdrop-blur-md px-4 py-3 md:px-8 md:py-3.5 border-b border-gray-100/50">
             {isClosed && (
               <div className="mb-4 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3 text-amber-800 animate-pulse">
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
@@ -998,7 +1059,7 @@ export default function Home() {
                 </div>
               </div>
             )}
-            <header className="flex flex-col gap-6">
+            <header className="flex flex-col gap-2.5">
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-3">
                   <div className="w-11 h-11 rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0 text-white"
@@ -1142,7 +1203,7 @@ export default function Home() {
                   placeholder="Cari produk..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-11 pr-12 py-3.5 bg-gray-200/20 backdrop-blur-sm border border-gray-200/50 rounded-2xl text-sm focus:outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100/30 transition-all shadow-sm font-normal"
+                  className="w-full pl-11 pr-12 py-2.5 bg-gray-200/20 backdrop-blur-sm border border-gray-200/50 rounded-2xl text-sm focus:outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100/30 transition-all shadow-sm font-normal"
                 />
                 {searchTerm && (
                   <button
@@ -1157,27 +1218,55 @@ export default function Home() {
                 )}
               </div>
 
-              {showCategoryFilter && (
-                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1 mt-1">
-                  {categoriesList.map(cat => (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`px-4 py-2 rounded-2xl text-[11px] font-bold transition-all whitespace-nowrap active:scale-95 border shadow-sm
-                        ${selectedCategory === cat
-                          ? 'bg-pink-500 text-white border-pink-500 shadow-pink-100'
-                          : 'bg-white text-gray-500 border-gray-100 active:bg-gray-50'}`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
+              {showCategoryFilter ? (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none flex-1 -mx-0.5 px-0.5">
+                    {categoriesList.map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all whitespace-nowrap active:scale-95 border shadow-sm
+                          ${selectedCategory === cat
+                            ? 'text-white shadow-sm'
+                            : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50 active:bg-gray-100'}`}
+                        style={selectedCategory === cat ? { backgroundColor: primaryColor, borderColor: primaryColor } : {}}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleCategoryFilter(false)}
+                    title="Sembunyikan filter kategori"
+                    className="shrink-0 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100/80 rounded-xl transition-all active:scale-95"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex justify-end -mt-1">
+                  <button
+                    type="button"
+                    onClick={() => toggleCategoryFilter(true)}
+                    title="Tampilkan filter kategori"
+                    className="py-1 px-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100/80 rounded-lg transition-all flex items-center gap-1 active:scale-95 text-[11px] font-semibold"
+                  >
+                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Kategori</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
                 </div>
               )}
 
             </header>
           </div>
 
-          <div className="px-4 md:px-8 pb-24 md:pb-8 pt-4 transition-all duration-300">
+          <div className="px-4 md:px-8 pb-24 md:pb-8 pt-3 transition-all duration-300">
             {loading ? (
               <div className="flex justify-center items-center h-64">
                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-pink-400"></div>
@@ -1207,15 +1296,14 @@ export default function Home() {
                         }
                         addToCart(product)
                         trackRapidTap(product.id, 'add')
-                        setCardFeedback({ id: product.id, type: 'add' })
-                        setTimeout(() => setCardFeedback(null), 600)
+                        triggerCardFeedback(product.id, 'add')
                       }}
                       onPointerDown={(e) => startCardHold(e, product)}
                       onPointerUp={() => stopHolding()}
                       onPointerLeave={() => stopHolding()}
                       onPointerCancel={() => stopHolding()}
                       onPointerMove={handlePointerMove}
-                      className={`flex flex-col p-5 rounded-3xl transition-all pos-product-card text-left h-40 disabled:opacity-50 group overflow-hidden relative ${
+                      className={`flex flex-col p-5 rounded-3xl transition-all duration-200 pos-product-card text-left h-40 disabled:opacity-50 group overflow-hidden relative ${
                         isInCart
                           ? 'border-2 shadow-md'
                           : 'bg-white shadow-sm border border-gray-100 hover:shadow-xl'
@@ -1259,15 +1347,13 @@ export default function Home() {
                               }
                               removeFromCart(product.id)
                               trackRapidTap(product.id, 'remove')
-                              setCardFeedback({ id: product.id, type: 'remove' })
-                              setTimeout(() => setCardFeedback(null), 600)
+                              triggerCardFeedback(product.id, 'remove')
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.stopPropagation()
                                 removeFromCart(product.id)
-                                setCardFeedback({ id: product.id, type: 'remove' })
-                                setTimeout(() => setCardFeedback(null), 600)
+                                triggerCardFeedback(product.id, 'remove')
                               }
                             }}
                             className="capsule-minus capsule-action no-card-scale w-8 h-8 flex items-center justify-center cursor-pointer hover:bg-gray-50/80 transition-colors select-none"
@@ -1324,15 +1410,13 @@ export default function Home() {
                               }
                               addToCart(product)
                               trackRapidTap(product.id, 'add')
-                              setCardFeedback({ id: product.id, type: 'add' })
-                              setTimeout(() => setCardFeedback(null), 600)
+                              triggerCardFeedback(product.id, 'add')
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.stopPropagation()
                                 addToCart(product)
-                                setCardFeedback({ id: product.id, type: 'add' })
-                                setTimeout(() => setCardFeedback(null), 600)
+                                triggerCardFeedback(product.id, 'add')
                               }
                             }}
                             className="capsule-minus capsule-action no-card-scale w-8 h-8 flex items-center justify-center cursor-pointer hover:bg-gray-50/80 transition-colors select-none"
@@ -1415,20 +1499,21 @@ export default function Home() {
                         </span>
                       </div>
                       {/* Add / Remove feedback overlay */}
-                      {cardFeedback?.id === product.id && (
+                      {feedbacks[product.id] && (
                         <div
+                          key={feedbacks[product.id].key}
                           className="absolute inset-0 z-20 flex items-center justify-center rounded-3xl animate-cart-ping pointer-events-none"
                           style={{
-                            backgroundColor: cardFeedback.type === 'remove' ? 'rgba(239, 68, 68, 0.12)' : `${primaryColor}22`,
+                            backgroundColor: feedbacks[product.id].type === 'remove' ? 'rgba(239, 68, 68, 0.12)' : `${primaryColor}22`,
                           }}
                         >
                           <span
                             className="font-black text-2xl animate-cart-float select-none"
                             style={{
-                              color: cardFeedback.type === 'remove' ? 'rgba(239, 68, 68, 0.85)' : primaryColor,
+                              color: feedbacks[product.id].type === 'remove' ? 'rgba(239, 68, 68, 0.85)' : primaryColor,
                             }}
                           >
-                            {cardFeedback.type === 'remove' ? '-1' : '+1'}
+                            {feedbacks[product.id].type === 'remove' ? '-1' : '+1'}
                           </span>
                         </div>
                       )}
@@ -1467,7 +1552,7 @@ export default function Home() {
               {cart.length > 0 && (
                 <button
                   disabled={processing}
-                  onClick={() => setCart([])}
+                  onClick={() => { setCart([]); setExitingCartIds([]) }}
                   className="text-gray-400 text-xs font-semibold hover:text-pink-500 transition-colors disabled:opacity-50"
                 >
                   Kosongkan
@@ -1496,7 +1581,7 @@ export default function Home() {
                 cart.map((item) => (
                   <div
                     key={item.id}
-                    className={`relative flex justify-between items-center group gap-2 border-b border-gray-100/50 pb-4 last:border-b-0 last:pb-0 overflow-hidden transition-all duration-[550ms] ease-[cubic-bezier(0.16,1,0.3,1)]
+                    className={`relative flex justify-between items-center group gap-2 border-b border-gray-100/50 pb-4 last:border-b-0 last:pb-0 overflow-hidden transition-all duration-[250ms] ease-[cubic-bezier(0.16,1,0.3,1)]
                       ${exitingCartIds.includes(item.id)
                         ? 'opacity-0 translate-y-8 scale-[0.96] max-h-0 !pb-0 !mb-0 pointer-events-none'
                         : 'opacity-100 translate-y-0 scale-100 max-h-24 animate-slide-in'}`}
